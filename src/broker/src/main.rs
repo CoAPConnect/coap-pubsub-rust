@@ -174,8 +174,61 @@ fn handle_post(req:&Box<CoapRequest<SocketAddr>>){
     // handle topic config etc
 }
 
-fn handle_delete(req:&Box<CoapRequest<SocketAddr>>){
-    // handle deletion of topic
+async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
+    let path = req.get_path(); // Extract the URI path from the request
+    let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
+
+    match components.as_slice() {
+        ["unsubscribe", topic_name, subscriber_addr_str] => {
+            if let Ok(subscriber_addr) = subscriber_addr_str.parse::<SocketAddr>() {
+                unsubscribe_topic(req, topic_name, subscriber_addr);
+            } else {
+                // Handle invalid subscriber address
+                if let Some(ref mut message) = req.response {
+                    message.message.payload = b"Invalid subscriber address".to_vec();
+                }
+            }
+        },
+        // Add resource deletion command here
+        _ => {
+            // Handle invalid or unrecognized paths
+            handle_invalid_path(req);
+        },
+    }
+}
+
+fn unsubscribe_topic(req: &mut CoapRequest<SocketAddr>, topic_name: &str, subscriber_addr: SocketAddr) {
+    let mut topics = TOPIC_MAP.lock().unwrap(); // Lock the topic map for safe access
+
+    if let Some(topic) = topics.get_mut(topic_name) {
+        // Topic found, attempt to remove subscriber
+        if let Some(index) = topic.subscribers.iter().position(|s| s.addr == subscriber_addr) {
+            // Subscriber found, remove it
+            topic.subscribers.remove(index);
+            println!("{} unsubscribed from {}", subscriber_addr, topic_name);
+
+            // Prepare a success response
+            if let Some(ref mut message) = req.response {
+                message.message.payload = format!("Unsubscribed from {}", topic_name).into_bytes();
+            }
+        } else {
+            // Subscriber not found, prepare an error response
+            if let Some(ref mut message) = req.response {
+                message.message.payload = b"Subscriber not found".to_vec();
+            }
+        }
+    } else {
+        // Topic not found, prepare an error response
+        if let Some(ref mut message) = req.response {
+            message.message.payload = b"Topic not found".to_vec();
+        }
+    }
+}
+
+fn handle_resource_deletion_or_invalid_path(req: &mut CoapRequest<SocketAddr>, components: &[&str]) {
+    // Implement resource deletion or handle invalid path
+    // This function is a placeholder for actual logic
+    println!("Resource deletion or invalid path handling is not implemented.");
 }
 
 fn initialize_topics() {
@@ -200,7 +253,7 @@ fn main() {
                 &Method::Get => handle_get(&mut *request),
                 &Method::Post => handle_post(&request),
                 &Method::Put => handle_put(&mut *request).await,
-                &Method::Delete => handle_delete(&request),
+                &Method::Delete => handle_delete(&mut *request).await,
                 _ => println!("request by other method"),
             };
 

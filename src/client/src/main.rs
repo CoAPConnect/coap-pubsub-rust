@@ -5,7 +5,16 @@ use std::io::ErrorKind;
 use tokio;
 use tokio::net::UdpSocket;
 use std::error::Error;
-use tokio::time::{timeout, Duration};
+use tokio::sync::mpsc;
+use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+
+type ListenerChannel = mpsc::Sender<()>;
+type ListenerHandle = tokio::task::JoinHandle<()>;
+// Store the listener handle, stop channel, and local address
+type ListenerInfo = (ListenerHandle, ListenerChannel, String);
+type ListenerMap = Arc<Mutex<HashMap<String, ListenerInfo>>>;
+
 
 #[tokio::main]
 async fn main() {
@@ -13,12 +22,14 @@ async fn main() {
 }
 
 async fn handle_command() {
+    let listeners: ListenerMap = Arc::new(Mutex::new(HashMap::new()));
     let discovery_url = "coap://127.0.0.1:5683/discovery";
 
     loop {
         println!("Enter command:");
         println!("1. discovery");
         println!("2. subscribe <TopicName>");
+        println!("3. unsubscribe <TopicName>");
 
         io::stdout().flush().unwrap();
 
@@ -31,15 +42,20 @@ async fn handle_command() {
                 discovery(discovery_url).await;
             },
             ["subscribe", topic_name] => {
-                subscribe(topic_name).await;
+                let listeners_clone = listeners.clone();
+                subscribe(topic_name, listeners_clone).await;
+            },
+            ["unsubscribe", topic_name] => {
+                let listeners_clone = listeners.clone();
+                unsubscribe(topic_name, listeners_clone).await;
             },
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
         }
     }
 }
 
-async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
-   // Bind a UDP socket to an ephemeral port
+async fn subscribe(topic_name: &str, listeners: ListenerMap) -> Result<(), Box<dyn Error>> {
+   let (tx, rx) = mpsc::channel(1);
    let socket = UdpSocket::bind("127.0.0.1:0").await?;
    let local_addr = socket.local_addr()?;
 
@@ -66,28 +82,63 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
     }
    
    // Spawn a background task to listen for messages
-   tokio::spawn(async move {
-       listen_for_messages(socket).await;
+   let handle = tokio::spawn(async move {
+       listen_for_messages(socket, rx).await;
    });
+
+   listeners.lock().unwrap().insert(topic_name.to_string(), (handle, tx, local_addr.to_string()));
 
    return Ok(());
 }
 
-async fn listen_for_messages(socket: UdpSocket) {
-    let mut buf = [0u8; 1024]; // Buffer for incoming data
+async fn unsubscribe(topic_name: &str, listeners: ListenerMap) -> Result<(), Box<dyn Error>> {
+    // Attempt to remove the listener information using the topic name
+    if let Some((handle, tx, local_addr_str)) = listeners.lock().unwrap().remove(topic_name) {
+        // Send the stop signal to the listener task
+        tx.send(()).await.unwrap();
+        // Wait for the listener task to finish
+        handle.await.unwrap();
+
+        // The address of the CoAP broker
+        let broker_addr = "127.0.0.1:5683";
+
+        // Construct the unsubscribe URL using the local address of the listener
+        let unsubscribe_url = format!("coap://{}/unsubscribe/{}/{}", broker_addr, topic_name, local_addr_str);
+
+        // Send the unsubscribe request
+        match UdpCoAPClient::delete(&unsubscribe_url).await {
+            Ok(response) => {
+                println!("Unsubscribed successfully: {}", String::from_utf8_lossy(&response.message.payload));
+            },
+            Err(e) => {
+                eprintln!("Error unsubscribing: {:?}", e);
+            }
+        }
+    } else {
+        println!("Listener for topic '{}' not found.", topic_name);
+    }
+
+    Ok(())
+}
+
+async fn listen_for_messages(socket: UdpSocket, mut stop_signal: mpsc::Receiver<()>) {
+    let mut buf = [0u8; 1024];
     loop {
-        match timeout(Duration::from_secs(3600), socket.recv_from(&mut buf)).await {
-            Ok(Ok((len, src))) => {
-                println!("Received message from {}: {}", src, String::from_utf8_lossy(&buf[..len]));
-                // Handle the message as needed
-            },
-            Ok(Err(e)) => {
-                eprintln!("Error receiving message: {}", e);
-                break; // Exit the loop if there's an error
-            },
-            Err(_) => {
-                println!("Listening timed out after 3600 seconds");
-                break; // Exit the loop after the timeout
+        tokio::select! {
+            _ = stop_signal.recv() => {
+                println!("Stop listening for topic");
+                break;
+            }
+            result = socket.recv_from(&mut buf) => {
+                match result {
+                    Ok((len, src)) => {
+                        println!("Received message from {}: {}", src, String::from_utf8_lossy(&buf[..len]));
+                    },
+                    Err(e) => {
+                        eprintln!("Error receiving message: {}", e);
+                        break;
+                    }
+                }
             }
         }
     }

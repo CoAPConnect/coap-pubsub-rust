@@ -86,13 +86,8 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
             // Handle discovery request
             handle_discovery(req);
         },
-        ["subscribe", topic, address] => {
-            // Handle subscription request
-            if let Ok(address) = address.parse::<SocketAddr>() {
-                handle_subscribe(req, topic, address);
-            } else {
-                eprintln!("Invalid address format: {}", address);
-            }
+        ["subscribe", topic] => {
+            handle_subscribe(req, topic, req.source.unwrap());
         },
         _ => {
             // Handle invalid or unrecognized paths
@@ -179,15 +174,8 @@ async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
     let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
 
     match components.as_slice() {
-        ["unsubscribe", topic_name, subscriber_addr_str] => {
-            if let Ok(subscriber_addr) = subscriber_addr_str.parse::<SocketAddr>() {
-                unsubscribe_topic(req, topic_name, subscriber_addr);
-            } else {
-                // Handle invalid subscriber address
-                if let Some(ref mut message) = req.response {
-                    message.message.payload = b"Invalid subscriber address".to_vec();
-                }
-            }
+        ["unsubscribe", topic_name] => {
+            unsubscribe_topic(req, topic_name, req.source.unwrap());
         },
         // Add resource deletion command here
         _ => {

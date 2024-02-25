@@ -3,7 +3,8 @@ use coap::Server;
 use tokio::runtime::Runtime;
 use std::net::SocketAddr;
 mod resource;
-use resource::CoapResource;
+use resource::Topic;
+use resource::TopicCollection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -11,10 +12,7 @@ struct Subscriber {
     addr: SocketAddr,
 }
 
-struct Topic {
-    subscribers: Vec<Subscriber>,
-    resource: CoapResource
-}
+
 
 type TopicMap = Arc<Mutex<HashMap<String, Topic>>>;
 
@@ -37,6 +35,7 @@ fn handle_delete(req:&Box<CoapRequest<SocketAddr>>){
 fn main() {
     let topics: TopicMap = Arc::new(Mutex::new(HashMap::new()));
     let addr = "127.0.0.1:5683";
+        
     Runtime::new().unwrap().block_on(async move {
         let mut server = Server::new_udp(addr).unwrap();
         println!("Server up on {}", addr);

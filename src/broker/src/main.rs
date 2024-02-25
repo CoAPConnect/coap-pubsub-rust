@@ -3,18 +3,15 @@ use coap::Server;
 use tokio::runtime::Runtime;
 use std::net::SocketAddr;
 mod resource;
-use resource::CoapResource;
+use resource::Topic;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+
 
 struct Subscriber {
     addr: SocketAddr,
 }
 
-struct Topic {
-    subscribers: Vec<Subscriber>,
-    resource: CoapResource
-}
 
 type TopicMap = Arc<Mutex<HashMap<String, Topic>>>;
 
@@ -35,6 +32,23 @@ fn handle_delete(req:&Box<CoapRequest<SocketAddr>>){
 }
 
 fn main() {
+    //Topic testing
+    let mut example_topic = Topic::new(String::from("topic1"), String::from("core.ps.conf"));
+    example_topic.set_topic_uri(String::from("http://example.com/topic1"));
+    example_topic.set_topic_data(String::from("data"));
+    example_topic.set_media_type(String::from("text/plain"));
+    example_topic.set_topic_type(String::from("topic"));
+    example_topic.set_expiration_date(String::from("2022-12-31"));
+    example_topic.set_max_subscribers(100);
+    println!("Topic name: {}", example_topic.get_topic_name());
+    println!("Resource type: {}", example_topic.get_resource_type());
+    println!("Topic URI: {}", example_topic.get_topic_uri().unwrap());
+    println!("Topic data: {}", example_topic.get_topic_data().unwrap());
+    println!("Media type: {}", example_topic.get_media_type().unwrap());
+    println!("Topic type: {}", example_topic.get_topic_type().unwrap());
+    println!("Expiration date: {}", example_topic.get_expiration_date().unwrap());
+    println!("Max subscribers: {}", example_topic.get_max_subscribers());
+    //Topic testing ends
     let topics: TopicMap = Arc::new(Mutex::new(HashMap::new()));
     let addr = "127.0.0.1:5683";
     Runtime::new().unwrap().block_on(async move {

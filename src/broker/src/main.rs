@@ -1,9 +1,11 @@
-use coap_lite::{RequestType as Method, CoapRequest};
+use coap::server::{Listener, UdpCoapListener};
+use coap_lite::{CoapOption, CoapRequest, ContentFormat, RequestType as Method};
 use coap::Server;
 use tokio::runtime::Runtime;
-use std::net::{SocketAddr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 // use resource::CoapResource;
 use std::collections::HashMap;
+use std::ops::Index;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use once_cell::sync::Lazy;
@@ -29,6 +31,14 @@ impl Topic {
 static TOPIC_MAP: Lazy<Arc<Mutex<HashMap<String, Topic>>>> = Lazy::new(|| {
     Arc::new(Mutex::new(HashMap::new()))
 });
+
+fn handle_broker_discovery(req: &mut CoapRequest<SocketAddr>){
+    println!("Handling broker discovery");
+
+    let mut response = req.response.as_mut().unwrap();
+    response.message.add_option(CoapOption::ContentFormat, (b"127.0.0.1:5683").to_vec());
+    response.message.payload = (b"127.0.0.1:5683").to_vec()
+}
 
 fn handle_discovery(req: &mut CoapRequest<SocketAddr>) {
     println!("Handling discovery");
@@ -71,7 +81,11 @@ fn handle_subscribe(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_a
 
 fn handle_invalid_path(req: &CoapRequest<SocketAddr>) {
     // Handle unrecognized paths
-    println!("Invalid path requested");
+    let path = req.get_path();
+    println!("Invalid path requested: {}", path);
+
+    let src = req.source.unwrap();
+    println!("Requested by: {}", src);
     // Set an appropriate response indicating the error
 }
 
@@ -83,8 +97,12 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
 
     match components.as_slice() {
         ["discovery"] => {
-            // Handle discovery request
             handle_discovery(req);
+        },
+        [".well-known", "core?rt=core.ps"] => {
+            // Handle discovery request
+            //handle_discovery(req);
+            handle_broker_discovery(req);
         },
         ["subscribe", topic] => {
             handle_subscribe(req, topic, req.source.unwrap());
@@ -233,8 +251,22 @@ fn main() {
 
     let addr = "127.0.0.1:5683";
     Runtime::new().unwrap().block_on(async move {
-        let server = Server::new_udp(addr).unwrap();
-        println!("Server up on {}", addr);
+        let socket_local = tokio::net::UdpSocket::bind(addr).await.unwrap();
+        let socket_multi = tokio::net::UdpSocket::bind("0.0.0.0:5683").await.unwrap();
+
+
+        // listeners on 127.0.0.1:5683 and all coap multicast addresses
+        let mut listeners: Vec<Box<dyn Listener>> = Vec::new();
+        let listener1 = Box::new(UdpCoapListener::from_socket(socket_local));
+        let mut listener2 =  Box::new(UdpCoapListener::from_socket(socket_multi));
+        let segment: u8 = 0;
+        listener2.enable_all_coap(segment);
+
+        listeners.push(listener1);
+        listeners.push(listener2);
+        let server = Server::from_listeners(listeners);
+        
+        println!("Server up on {}, listening to all coap multicasts", addr);
 
         server.run(|mut request: Box<CoapRequest<SocketAddr>>| async {
             match request.get_method() {

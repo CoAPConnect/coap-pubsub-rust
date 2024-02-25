@@ -1,7 +1,7 @@
 use coap::client::ObserveMessage;
 use coap::UdpCoAPClient;
 use coap_lite::{
-    CoapRequest, RequestType as Method
+    CoapOption, CoapRequest, RequestType as Method
 };
 use std::io::{self, Write};
 use std::io::ErrorKind;
@@ -29,10 +29,11 @@ async fn handle_command() {
     let discovery_url = "coap://127.0.0.1:5683/discovery";
 
     loop {
-        println!("Enter command:");
+        println!("Enter command number:");
         println!("1. discovery");
         println!("2. subscribe <TopicName>");
         println!("3. unsubscribe <TopicName>");
+        println!("4. multicast broker discovery");
 
         io::stdout().flush().unwrap();
 
@@ -41,16 +42,43 @@ async fn handle_command() {
         let args: Vec<&str> = input.trim().split_whitespace().collect();
 
         match args.as_slice() {
-            ["discovery"] => {
+            ["1"] | ["topic discovery"] => {
                 discovery(discovery_url).await;
             },
-            ["subscribe", topic_name] => {
+            ["2", topic_name] | ["subscribe", topic_name] => {
                 subscribe(topic_name).await;
             },
-            ["unsubscribe", topic_name] => {
+            ["3", topic_name] | ["unsubscribe", topic_name] => {
                 unsubscribe(topic_name).await;
             },
+            ["4"] | ["multicast discovery"] => {
+                multicast_discovery().await;
+            },
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
+        }
+    }
+}
+
+async fn multicast_discovery(){
+    let addr = "127.0.0.1:5683";
+    println!("Multicast attempt start");
+
+    let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
+
+    let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
+    request.set_path(".well-known/core?rt=core.ps");
+
+    //segment is ipv6 segment for multicast, need to be called on all segments we want to use, but in our case ipv4 is used so "0" is enough for now
+    let segment: u8 = 0;
+    UdpCoAPClient::send_all_coap(&client, &request, segment).await.unwrap();
+    let response = client.receive_raw_response().await.unwrap();
+    let pay = std::str::from_utf8((response.message.get_first_option(CoapOption::ContentFormat)).unwrap());
+    match pay {
+        Ok(pay) => {
+            println!("Payload: {}", pay);
+        }
+        Err(err) => {
+            println!("Error converting payload to string: {}", err);
         }
     }
 }

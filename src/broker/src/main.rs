@@ -35,7 +35,6 @@ fn handle_delete(req:&Box<CoapRequest<SocketAddr>>){
 fn main() {
     let topics: TopicMap = Arc::new(Mutex::new(HashMap::new()));
     let addr = "127.0.0.1:5683";
-        
     Runtime::new().unwrap().block_on(async move {
         let mut server = Server::new_udp(addr).unwrap();
         println!("Server up on {}", addr);

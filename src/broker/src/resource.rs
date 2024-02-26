@@ -1,137 +1,115 @@
-/// #Topic resource as struct and its implemented methods.
+///Topic resource as struct and its implemented methods.
 ///
-/// Fields are based on IETF draft <https://www.ietf.org/archive/id/draft-ietf-core-coap-pubsub-13.html>
-/// Referenced 25.3.2024
+///Fields are based on IETF draft <https://www.ietf.org/archive/id/draft-ietf-core-coap-pubsub-13.html>
+///Referenced 25.3.2024
 ///
-/// Mandatory fields for topic creation: topic_name, resource_type (only "core.ps.conf" accepted).
-/// Optional fields for topic creation: topic_uri, topic_data, media_type, topic_type, expiration_date, max_subscribers.
-
+///Mandatory fields for topic creation: topic_name, resource_type (only "core.ps.conf" accepted).
+///Optional fields for topic creation: topic_uri, topic_data, media_type, topic_type, expiration_date, max_subscribers.
+/// Represents a topic in the broker.
 pub struct Topic {
     /// The name of the topic.
     pub topic_name: String,
-    /// The resource type of the topic. Only "core.ps.conf" is accepted.
+    /// The type of the resource associated with the topic.
     pub resource_type: String,
-    /// The URI of the topic. Optional field.
-    pub topic_uri: Option<String>,
-    /// The data associated with the topic. Optional field.
-    pub topic_data: Option<String>,
-    /// The media type of the topic. Optional field.
-    pub media_type: Option<String>,
-    /// The type of the topic. Optional field.
-    pub topic_type: Option<String>,
-    /// The expiration date of the topic. Optional field.
-    pub expiration_date: Option<String>,
+    /// The URI of the topic.
+    pub topic_uri: String,
+    /// The data associated with the topic.
+    pub topic_data: String,
+    /// The media type of the topic data.
+    pub media_type: String,
+    /// The type of the topic.
+    pub topic_type: String,
+    /// The expiration date of the topic.
+    pub expiration_date: String,
     /// The maximum number of subscribers allowed for the topic.
     pub max_subscribers: i32,
 }
 
-/// #Topic implementation.
-/// Create a new mutable struct for an example:
-///```rust
-///let mut topic = Topic::new(String::from("topic1"), String::from("core.ps.conf"));
-///```
+///Topic implementation.
+///Create a new mutable struct for an example:
+/// ```rust
+/// let topic = Topic::new("topic_name".to_string(), "core.ps.conf".to_string());
+/// ```
 impl Topic {
-    /// Creates a new topic with the specified name and resource type.
     pub fn new(topic_name: String, resource_type: String) -> Self {
         Topic {
             topic_name,
             resource_type,
-            topic_uri: None,
-            topic_data: None,
-            media_type: None,
-            topic_type: None,
-            expiration_date: None,
+            topic_uri: String::new(),
+            topic_data: String::new(),
+            media_type: String::new(),
+            topic_type: String::new(),
+            expiration_date: String::new(),
             max_subscribers: 86400,
         }
     }
-
-    /// Returns the name of the topic.
-    pub fn get_topic_name(&self) -> &str {
-        &self.topic_name
-    }
-
-    /// Returns the resource type of the topic.
-    pub fn get_resource_type(&self) -> &str {
-        &self.resource_type
-    }
-
-    /// Returns the URI of the topic, if available.
-    pub fn get_topic_uri(&self) -> Option<&str> {
-        self.topic_uri.as_deref()
-    }
-
-    /// Returns the data associated with the topic, if available.
-    pub fn get_topic_data(&self) -> Option<&str> {
-        self.topic_data.as_deref()
-    }
-
-    /// Returns the media type of the topic, if available.
-    pub fn get_media_type(&self) -> Option<&str> {
-        self.media_type.as_deref()
-    }
-
-    /// Returns the type of the topic, if available.
-    pub fn get_topic_type(&self) -> Option<&str> {
-        self.topic_type.as_deref()
-    }
-
-    /// Returns the expiration date of the topic, if available.
-    pub fn get_expiration_date(&self) -> Option<&str> {
-        self.expiration_date.as_deref()
-    }
-
-    /// Returns the maximum number of subscribers allowed for the topic.
-    pub fn get_max_subscribers(&self) -> i32 {
-        self.max_subscribers
-    }
-
-    /// Sets the name of the topic.
-    pub fn set_topic_name(&mut self, topic_name: String) {
-        self.topic_name = topic_name;
-    }
-
-    /// Sets the resource type of the topic.
-    pub fn set_resource_type(&mut self, resource_type: String) {
-        self.resource_type = resource_type;
-    }
-
-    /// Sets the URI of the topic.
+    ///Set the URI of the topic.
     pub fn set_topic_uri(&mut self, topic_uri: String) {
-        self.topic_uri = Some(topic_uri);
+        self.topic_uri = topic_uri;
     }
-
-    /// Sets the data associated with the topic.
+    ///Set the data of the topic.
     pub fn set_topic_data(&mut self, topic_data: String) {
-        self.topic_data = Some(topic_data);
+        self.topic_data = topic_data;
     }
-
-    /// Sets the media type of the topic.
+    ///Set the media type of the topic data.
     pub fn set_media_type(&mut self, media_type: String) {
-        self.media_type = Some(media_type);
+        self.media_type = media_type;
     }
-
-    /// Sets the type of the topic.
+    ///Set the type of the topic.
     pub fn set_topic_type(&mut self, topic_type: String) {
-        self.topic_type = Some(topic_type);
+        self.topic_type = topic_type;
     }
-
-    /// Sets the expiration date of the topic.
+    ///Set the expiration date of the topic.
     pub fn set_expiration_date(&mut self, expiration_date: String) {
-        self.expiration_date = Some(expiration_date);
+        self.expiration_date = expiration_date;
     }
-
-    /// Sets the maximum number of subscribers allowed for the topic.
+    ///Set the maximum number of subscribers allowed for the topic.
     pub fn set_max_subscribers(&mut self, max_subscribers: i32) {
         self.max_subscribers = max_subscribers;
     }
+    ///Get the name of the topic.
+    pub fn get_topic_name(&self) -> &str {
+        &self.topic_name
+    }
+    ///Get the type of the resource associated with the topic.
+    pub fn get_resource_type(&self) -> &str {
+        &self.resource_type
+    }
+    ///Get the URI of the topic.
+    pub fn get_topic_uri(&self) -> &str {
+        &self.topic_uri
+    }
+    ///Get the data of the topic.
+    pub fn get_topic_data(&self) -> &str {
+        &self.topic_data
+    }
+    ///Get the media type of the topic data.
+    pub fn get_media_type(&self) -> &str {
+        &self.media_type
+    }
+    ///Get the type of the topic.
+    pub fn get_topic_type(&self) -> &str {
+        &self.topic_type
+    }
+    ///Get the expiration date of the topic.
+    pub fn get_expiration_date(&self) -> &str {
+        &self.expiration_date
+    }
+    ///Get the maximum number of subscribers allowed for the topic.
+    pub fn get_max_subscribers(&self) -> i32 {
+        self.max_subscribers
+    }
 }
-
+///Topic collection as struct
 pub struct TopicCollection {
+    /// The name of the topic collection.
     name: String,
+    /// The type of the resource associated with the topic collection "core.ps.coll".
     resource_type: String,
+    /// The topics in the topic collection.
     topics: Vec<Topic>,
 }
-
+///Topic collection implementation.
 impl TopicCollection {
     /// Creates a new topic collection with the specified name.
     pub fn new(name: String) -> Self {
@@ -188,7 +166,7 @@ impl TopicCollection {
 
     /// Finds a topic in the topic collection by its URI.
     pub fn find_topic_by_uri(&self, topic_uri: &str) -> Option<&Topic> {
-        self.topics.iter().find(|topic| topic.get_topic_uri() == Some(topic_uri))
+        self.topics.iter().find(|topic| topic.get_topic_uri() == topic_uri)
     }
 
     /// Finds a topic in the topic collection by its name.

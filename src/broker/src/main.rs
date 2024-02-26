@@ -42,12 +42,22 @@ fn main() {
     example_topic.set_max_subscribers(100);
     println!("Topic name: {}", example_topic.get_topic_name());
     println!("Resource type: {}", example_topic.get_resource_type());
-    println!("Topic URI: {}", example_topic.get_topic_uri().unwrap());
-    println!("Topic data: {}", example_topic.get_topic_data().unwrap());
-    println!("Media type: {}", example_topic.get_media_type().unwrap());
-    println!("Topic type: {}", example_topic.get_topic_type().unwrap());
-    println!("Expiration date: {}", example_topic.get_expiration_date().unwrap());
+    println!("Topic URI: {}", example_topic.get_topic_uri());
+    println!("Topic data: {}", example_topic.get_topic_data());
+    println!("Media type: {}", example_topic.get_media_type());
+    println!("Topic type: {}", example_topic.get_topic_type());
+    println!("Expiration date: {}", example_topic.get_expiration_date());
     println!("Max subscribers: {}", example_topic.get_max_subscribers());
+    let mut topic2 = Topic::new(String::from("topic2"), String::from("core.ps.conf"));
+    println!("Topic name: {}", topic2.get_topic_name());
+    println!("Resource type: {}", topic2.get_resource_type());
+    println!("Topic URI: {}", topic2.get_topic_uri());
+    println!("Topic data: {}", topic2.get_topic_data());
+    println!("Media type: {}", topic2.get_media_type());
+    println!("Topic type: {}", topic2.get_topic_type());
+    println!("Expiration date: {}", topic2.get_expiration_date());
+    println!("Max subscribers: {}", topic2.get_max_subscribers());
+    
     //Topic testing ends
     let topics: TopicMap = Arc::new(Mutex::new(HashMap::new()));
     let addr = "127.0.0.1:5683";

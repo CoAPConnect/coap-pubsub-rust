@@ -3,7 +3,7 @@ use coap::Server;
 use tokio::runtime::Runtime;
 use std::net::SocketAddr;
 mod resource;
-use resource::CoapResource;
+use resource::DataResource;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -13,7 +13,6 @@ struct Subscriber {
 
 struct Topic {
     subscribers: Vec<Subscriber>,
-    resource: CoapResource
 }
 
 type TopicMap = Arc<Mutex<HashMap<String, Topic>>>;

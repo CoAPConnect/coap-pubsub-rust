@@ -35,8 +35,10 @@ static TOPIC_MAP: Lazy<Arc<Mutex<HashMap<String, Topic>>>> = Lazy::new(|| {
 fn handle_broker_discovery(req: &mut CoapRequest<SocketAddr>){
     println!("Handling broker discovery");
 
-    let mut response = req.response.as_mut().unwrap();
+    let response = req.response.as_mut().unwrap();
     response.message.add_option(CoapOption::ContentFormat, (b"127.0.0.1:5683").to_vec());
+
+    // actual data is sent in the conrentformat option, this line is for testing purposes
     response.message.payload = (b"127.0.0.1:5683").to_vec()
 }
 
@@ -54,8 +56,8 @@ fn handle_discovery(req: &mut CoapRequest<SocketAddr>) {
 }
 
 fn handle_subscribe(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_addr: SocketAddr) {
-    println!("Subscribing to topic: {}", topic_name);
-
+    println!("Beginning subscription handling");
+    
     let mut topics = TOPIC_MAP.lock().unwrap(); // Lock the topic map for safe access
 
     // Check if the topic exists
@@ -68,12 +70,15 @@ fn handle_subscribe(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_a
         // Prepare a success response
         if let Some(ref mut message) = req.response {
             message.message.payload = format!("Subscribed to {}", topic_name).into_bytes();
+            message.message.set_content_format(coap_lite::ContentFormat::try_from(110).unwrap());
+            message.message.set_observe_value(10001);
         }
         println!("{} subscribed to {}", local_addr.to_string(), topic_name);
     } else {
         // Topic does not exist, prepare an error response
         if let Some(ref mut message) = req.response {
             message.message.payload = b"Topic not found".to_vec();
+            message.set_status(coap_lite::ResponseType::NotFound);
         }
     }
 }
@@ -99,9 +104,7 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         ["discovery"] => {
             handle_discovery(req);
         },
-        [".well-known", "core?rt=core.ps"] => {
-            // Handle discovery request
-            //handle_discovery(req);
+        [".well-known", "core"] | [".well-known", "core?rt=core.ps"] => {
             handle_broker_discovery(req);
         },
         ["subscribe", topic] => {
@@ -161,6 +164,7 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
 
         if let Some(ref mut message) = req.response {
             message.message.payload = b"Resource updated successfully".to_vec();
+            println!("{} was updated", topic_name);
         }
     } else {
         // Topic not found
@@ -264,9 +268,11 @@ fn main() {
 
         listeners.push(listener1);
         listeners.push(listener2);
-        let server = Server::from_listeners(listeners);
+        let mut server = Server::from_listeners(listeners);
+
+        server.disable_observe_handling(true).await;
         
-        println!("Server up on {}, listening to all coap multicasts", addr);
+        println!("Server up on {}, listening to coap multicasts", addr);
 
         server.run(|mut request: Box<CoapRequest<SocketAddr>>| async {
             match request.get_method() {

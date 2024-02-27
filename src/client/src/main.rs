@@ -1,7 +1,7 @@
 use coap::client::ObserveMessage;
 use coap::UdpCoAPClient;
 use coap_lite::{
-    CoapOption, CoapRequest, RequestType as Method
+    CoapOption, CoapRequest, CoapResponse, Packet, RequestType as Method
 };
 use std::io::{self, Write};
 use std::io::ErrorKind;
@@ -51,7 +51,7 @@ async fn handle_command() {
             ["3", topic_name] | ["unsubscribe", topic_name] => {
                 unsubscribe(topic_name).await;
             },
-            ["4"] | ["multicast discovery"] => {
+            ["4"] | ["multicast broker discovery"] => {
                 multicast_discovery().await;
             },
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
@@ -99,6 +99,7 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
     request.set_method(Method::Get);
     request.set_path(&format!("/subscribe/{}", topic_name));
+    request.message.set_observe_value(0);
 
     let packet = request.message.to_bytes().unwrap();
     listen_socket.send_to(&packet[..], "127.0.0.1:5683").await.expect("Could not send the data");
@@ -110,13 +111,18 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
     return Ok(());
 }
 
+/// Listen for responses and future publifications on followed topics
+/// In the future should check that the response has observe value to see subscription was ok
 async fn listen_for_messages(socket: Arc<UdpSocket>) {
     let mut buf = [0u8; 1024];
     loop {
         match socket.recv_from(&mut buf).await {
             Ok((len, src)) => {
                 // Successfully received a message
-                println!("Received message from {}: {}", src, String::from_utf8_lossy(&buf[..len]));
+                let packet = Packet::from_bytes(&buf[..len]).unwrap();
+                let request = CoapRequest::from_packet(packet, src);
+                let msg = String::from_utf8(request.message.payload).unwrap();
+                println!("Received message from {}: {}", src, msg);
             },
             Err(e) => {
                 // An error occurred

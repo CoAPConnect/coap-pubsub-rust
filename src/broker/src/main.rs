@@ -78,7 +78,6 @@ fn handle_subscribe(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_a
     }
 }
 
-
 fn handle_invalid_path(req: &CoapRequest<SocketAddr>) {
     // Handle unrecognized paths
     let path = req.get_path();
@@ -194,9 +193,6 @@ async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
     let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
 
     match components.as_slice() {
-        [topic_name, "unsubscribe"] => {
-            unsubscribe_topic(req, topic_name, req.source.unwrap());
-        },
         [topic_name, "delete"] => {
             delete_topic(req, topic_name, req.source.unwrap());
         },
@@ -219,36 +215,6 @@ fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_addr:
         }
     } else {
         // Topic not found
-        if let Some(ref mut message) = req.response {
-            message.message.payload = b"Topic not found".to_vec();
-        }
-    }
-}
-
-fn unsubscribe_topic(req: &mut CoapRequest<SocketAddr>, topic_name: &str, subscriber_addr: SocketAddr) {
-    let mut topics = TOPIC_MAP.lock().unwrap(); // Lock the topic map for safe access
-    let local_addr = req.source.unwrap();
-
-    if let Some(topic) = topics.get_mut(topic_name) {
-        // Topic found, attempt to remove subscriber
-        if let Some(index) = topic.subscribers.iter().position(|s| s.addr == subscriber_addr) {
-            // Subscriber found, remove it
-            topic.subscribers.remove(index);
-            println!("{} unsubscribed from {}", subscriber_addr, topic_name);
-
-            // Prepare a success response
-            if let Some(ref mut message) = req.response {
-                message.message.payload = b"Unsubscribed successfully".to_vec();
-                println!("{} unsubscribed {}", local_addr.to_string(), topic_name);
-            }
-        } else {
-            // Subscriber not found, prepare an error response
-            if let Some(ref mut message) = req.response {
-                message.message.payload = b"Subscriber not found".to_vec();
-            }
-        }
-    } else {
-        // Topic not found, prepare an error response
         if let Some(ref mut message) = req.response {
             message.message.payload = b"Topic not found".to_vec();
         }
@@ -280,12 +246,8 @@ fn main() {
         // listeners on 127.0.0.1:5683 and all coap multicast addresses
         let mut listeners: Vec<Box<dyn Listener>> = Vec::new();
         let listener1 = Box::new(UdpCoapListener::from_socket(socket_local));
-        let mut listener2 =  Box::new(UdpCoapListener::from_socket(socket_multi));
-        let segment: u8 = 0;
-        listener2.enable_all_coap(segment);
 
         listeners.push(listener1);
-        listeners.push(listener2);
         let server = Server::from_listeners(listeners);
         
         println!("Server up on {}, listening to all coap multicasts", addr);

@@ -4,6 +4,7 @@ use tokio::runtime::Runtime;
 use std::net::SocketAddr;
 mod resource;
 use resource::Topic;
+use resource::TopicCollection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 

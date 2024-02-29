@@ -111,11 +111,81 @@ impl Topic {
         &self.expiration_date
     }
     ///Get the maximum number of subscribers allowed for the topic.
-    pub fn get_max_subscribers(&self) -> u32 {
+    pub fn get_max_subscribers(&self) -> i32 {
         self.max_subscribers
     }
-    ///Get the maximum number of subscribers allowed for the topic.
-    pub fn get_observe_check(&self) -> u32 {
-        self.observe_check
+}
+///Topic collection as struct
+pub struct TopicCollection {
+    /// The name of the topic collection.
+    name: String,
+    /// The type of the resource associated with the topic collection "core.ps.coll".
+    resource_type: String,
+    /// The topics in the topic collection.
+    topics: Vec<Topic>,
+}
+///Topic collection implementation.
+impl TopicCollection {
+    /// Creates a new topic collection with the specified name.
+    pub fn new(name: String) -> Self {
+        TopicCollection {
+            name,
+            resource_type: String::from("core.ps.coll"),
+            topics: Vec::new(),
+        }
+    }
+
+    //Getters and setters
+
+    /// Returns the name of the topic collection.
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the resource type of the topic collection.
+    pub fn get_resource_type(&self) -> &str {
+        &self.resource_type
+    }
+
+    /// Returns the topics in the topic collection.
+    pub fn get_topics(&self) -> &Vec<Topic> {
+        &self.topics
+    }
+
+    /// Sets the name of the topic collection.
+    pub fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+
+    /// Sets the resource type of the topic collection.
+    pub fn set_resource_type(&mut self, resource_type: String) {
+        self.resource_type = resource_type;
+    }
+
+    /// Sets the topics in the topic collection.
+    pub fn set_topics(&mut self, topics: Vec<Topic>) {
+        self.topics = topics;
+    }
+
+    //Additional functionality
+
+    /// Adds a topic to the topic collection.
+    pub fn add_topic(&mut self, topic: Topic) {
+        self.topics.push(topic);
+    }
+
+    /// Removes a topic from the topic collection by its name.
+    pub fn remove_topic(&mut self, topic_name: &str) {
+        self.topics.retain(|topic| topic.topic_name != topic_name);
+    }
+
+    /// Finds a topic in the topic collection by its URI.
+    pub fn find_topic_by_uri(&self, topic_uri: &str) -> Option<&Topic> {
+        self.topics.iter().find(|topic| topic.get_topic_uri() == topic_uri)
+    }
+
+    /// Finds a topic in the topic collection by its name.
+    pub fn find_topic_by_name(&self, topic_name: &str) -> Option<&Topic> {
+        self.topics.iter().find(|topic| topic.get_topic_name() == topic_name)
     }
 }

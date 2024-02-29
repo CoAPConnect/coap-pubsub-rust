@@ -22,7 +22,9 @@ pub struct Topic {
     /// The expiration date of the topic.
     pub expiration_date: String,
     /// The maximum number of subscribers allowed for the topic.
-    pub max_subscribers: i32,
+    pub max_subscribers: u32,
+    /// The amount of time in seconds between each observer check, removing uninterested observers
+    pub observe_check: u32,
 }
 
 ///Topic implementation.
@@ -40,7 +42,8 @@ impl Topic {
             media_type: String::new(),
             topic_type: String::new(),
             expiration_date: String::new(),
-            max_subscribers: 86400,
+            max_subscribers: u32::MAX,
+            observe_check: 86400,
         }
     }
     ///Set the URI of the topic.
@@ -63,9 +66,21 @@ impl Topic {
     pub fn set_expiration_date(&mut self, expiration_date: String) {
         self.expiration_date = expiration_date;
     }
-    ///Set the maximum number of subscribers allowed for the topic.
-    pub fn set_max_subscribers(&mut self, max_subscribers: i32) {
-        self.max_subscribers = max_subscribers;
+    ///Set the maximum number of subscribers allowed for the topic. Max value is determined by u32
+    pub fn set_max_subscribers(&mut self, max_subscribers: u32) {
+        if max_subscribers > u32::MAX{
+            self.max_subscribers = u32::MAX;
+        }else{
+            self.max_subscribers = max_subscribers;
+        }
+    }
+    ///Set the observe check time in seconds.
+    pub fn set_observe_check(&mut self, observe_check: u32) {
+        if observe_check > u32::MAX{
+            self.observe_check = u32::MAX;
+        }else{
+            self.observe_check = observe_check;
+        }
     }
     ///Get the name of the topic.
     pub fn get_topic_name(&self) -> &str {

@@ -12,8 +12,6 @@ struct Subscriber {
     addr: SocketAddr,
 }
 
-
-
 type TopicMap = Arc<Mutex<HashMap<String, Topic>>>;
 
 fn handle_get(req:&Box<CoapRequest<SocketAddr>>){
@@ -62,30 +60,3 @@ fn main() {
         }).await.unwrap();
     });
 }
-
-
-//let _ = inform_client("127.0.0.1:5684", request.message.payload.clone()).await;
-/*
-async fn inform_client(client_addr: &str, payload: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
-    let client_addr: SocketAddr = client_addr.parse()?;
-    
-    let socket = UdpSocket::bind("0.0.0.0:0")?;
-    socket.connect(client_addr)?;
-
-    let mut packet = Packet::new();
-    packet.header.set_type(coap_lite::MessageType::Confirmable);
-    packet.header.code = MessageClass::Request(Method::Post); 
-    packet.payload = payload.clone();
-
-    let message = packet.to_bytes()?;
-    socket.send(&message)?;
-
-    let mut buffer = [0; 1024];
-    let (size, _) = socket.recv_from(&mut buffer)?;
-    let response_packet = Packet::from_bytes(&buffer[..size])?;
-    println!("Received response: {:?}", response_packet);
-
-    Ok(())
-
-}
-*/

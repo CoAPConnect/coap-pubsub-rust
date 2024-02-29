@@ -67,9 +67,9 @@ fn handle_subscribe(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_a
 
         // Prepare a success response
         if let Some(ref mut message) = req.response {
-            message.message.payload = format!("Subscribed to {}", topic_name).into_bytes();
+            message.message.payload = b"Subscribed successfully".to_vec();
+            println!("{} subscribed to {}", local_addr.to_string(), topic_name);
         }
-        println!("{} subscribed to {}", local_addr.to_string(), topic_name);
     } else {
         // Topic does not exist, prepare an error response
         if let Some(ref mut message) = req.response {
@@ -104,7 +104,7 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
             //handle_discovery(req);
             handle_broker_discovery(req);
         },
-        ["subscribe", topic] => {
+        [topic, "subscribe"] => {
             handle_subscribe(req, topic, req.source.unwrap());
         },
         _ => {
@@ -117,6 +117,7 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
 async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
     let path_str = req.get_path();
     let components: Vec<&str> = path_str.split('/').filter(|s| !s.is_empty()).collect();
+    let local_addr = req.source.unwrap();
 
     // Now expecting at least 2 components: "topicName" and "data"
     if components.len() < 2 {
@@ -161,6 +162,7 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
 
         if let Some(ref mut message) = req.response {
             message.message.payload = b"Resource updated successfully".to_vec();
+            println!("{} updated {}", local_addr.to_string(), topic_name);
         }
     } else {
         // Topic not found
@@ -192,10 +194,12 @@ async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
     let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
 
     match components.as_slice() {
-        ["unsubscribe", topic_name] => {
+        [topic_name, "unsubscribe"] => {
             unsubscribe_topic(req, topic_name, req.source.unwrap());
         },
-        // Add resource deletion command here
+        [topic_name, "delete"] => {
+            delete_topic(req, topic_name, req.source.unwrap());
+        },
         _ => {
             // Handle invalid or unrecognized paths
             handle_invalid_path(req);
@@ -203,8 +207,27 @@ async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
     }
 }
 
+fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_addr: SocketAddr) {
+    println!("Deleting topic: {}", topic_name);
+    let mut topics = TOPIC_MAP.lock().unwrap(); // Lock the topic map for safe access
+
+    if topics.remove(topic_name).is_some() {
+        // Topic found and removed
+        if let Some(ref mut message) = req.response {
+            message.message.payload = b"Topic deleted successfully".to_vec();
+            println!("{} deleted {}", local_addr.to_string(), topic_name);
+        }
+    } else {
+        // Topic not found
+        if let Some(ref mut message) = req.response {
+            message.message.payload = b"Topic not found".to_vec();
+        }
+    }
+}
+
 fn unsubscribe_topic(req: &mut CoapRequest<SocketAddr>, topic_name: &str, subscriber_addr: SocketAddr) {
     let mut topics = TOPIC_MAP.lock().unwrap(); // Lock the topic map for safe access
+    let local_addr = req.source.unwrap();
 
     if let Some(topic) = topics.get_mut(topic_name) {
         // Topic found, attempt to remove subscriber
@@ -215,7 +238,8 @@ fn unsubscribe_topic(req: &mut CoapRequest<SocketAddr>, topic_name: &str, subscr
 
             // Prepare a success response
             if let Some(ref mut message) = req.response {
-                message.message.payload = format!("Unsubscribed from {}", topic_name).into_bytes();
+                message.message.payload = b"Unsubscribed successfully".to_vec();
+                println!("{} unsubscribed {}", local_addr.to_string(), topic_name);
             }
         } else {
             // Subscriber not found, prepare an error response
@@ -243,17 +267,15 @@ fn initialize_topics() {
     topics.insert("topic1".to_string(), Topic::new());
     topics.insert("topic2".to_string(), Topic::new());
     topics.insert("topic3".to_string(), Topic::new());
-    // Add as many topics as needed for testing
 }
 
 fn main() {
     initialize_topics();
-
     let addr = "127.0.0.1:5683";
+
     Runtime::new().unwrap().block_on(async move {
         let socket_local = tokio::net::UdpSocket::bind(addr).await.unwrap();
         let socket_multi = tokio::net::UdpSocket::bind("0.0.0.0:5683").await.unwrap();
-
 
         // listeners on 127.0.0.1:5683 and all coap multicast addresses
         let mut listeners: Vec<Box<dyn Listener>> = Vec::new();
@@ -276,10 +298,6 @@ fn main() {
                 &Method::Delete => handle_delete(&mut *request).await,
                 _ => println!("request by other method"),
             };
-
-
-
-            // respond to request
             return request;
         }).await.unwrap();
     });

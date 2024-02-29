@@ -34,6 +34,8 @@ async fn handle_command() {
         println!("2. subscribe <TopicName>");
         println!("3. unsubscribe <TopicName>");
         println!("4. multicast broker discovery");
+        println!("5. PUT <TopicName> <Payload>");
+        println!("6. DELETE <TopicName>");
 
         io::stdout().flush().unwrap();
 
@@ -54,10 +56,64 @@ async fn handle_command() {
             ["4"] | ["multicast discovery"] => {
                 multicast_discovery().await;
             },
+            ["5", topic_name, payload] | ["PUT", topic_name, payload] => {
+                update_topic(topic_name, payload).await;
+            },
+            ["6", topic_name] | ["DELETE", topic_name] => {
+                delete_topic(topic_name).await;
+            },
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
         }
     }
 }
+
+async fn delete_topic(topic_name: &str) -> Result<(), Box<dyn Error>> {
+    let url = format!("coap://127.0.0.1:5683/{}/delete", topic_name);
+    println!("Client request: {}", url);
+
+    match UdpCoAPClient::delete(&url).await {
+        Ok(response) => {
+            println!(
+                "Server reply: {}",
+                String::from_utf8(response.message.payload).unwrap()
+            );
+            Ok(())
+        }
+        Err(e) => {
+            match e.kind() {
+                ErrorKind::WouldBlock => println!("Request timeout"), // Unix
+                ErrorKind::TimedOut => println!("Request timeout"),   // Windows
+                _ => println!("Request error: {:?}", e),
+            }
+            Err(Box::new(e))
+        }
+    }
+}
+
+async fn update_topic(topic_name: &str, payload: &str) -> Result<(), Box<dyn Error>> {
+    let url = format!("coap://127.0.0.1:5683/{}/data", topic_name);
+    let data = payload.as_bytes().to_vec();
+    println!("Client request: {}", url);
+
+    match UdpCoAPClient::put(&url, data).await {
+        Ok(response) => {
+            println!(
+                "Server reply: {}",
+                String::from_utf8(response.message.payload).unwrap()
+            );
+            Ok(())
+        }
+        Err(e) => {
+            match e.kind() {
+                ErrorKind::WouldBlock => println!("Request timeout"), // Unix
+                ErrorKind::TimedOut => println!("Request timeout"),   // Windows
+                _ => println!("Request error: {:?}", e),
+            }
+            Err(Box::new(e))
+        }
+    }
+}
+
 
 async fn multicast_discovery(){
     let addr = "127.0.0.1:5683";
@@ -98,7 +154,7 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
 
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
     request.set_method(Method::Get);
-    request.set_path(&format!("/subscribe/{}", topic_name));
+    request.set_path(&format!("/{}/subscribe", topic_name));
 
     let packet = request.message.to_bytes().unwrap();
     listen_socket.send_to(&packet[..], "127.0.0.1:5683").await.expect("Could not send the data");
@@ -127,7 +183,6 @@ async fn listen_for_messages(socket: Arc<UdpSocket>) {
     }
 }
 
-
 async fn unsubscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
 
     let listen_socket = {
@@ -141,7 +196,7 @@ async fn unsubscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
 
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
     request.set_method(Method::Delete); // Set method to DELETE
-    request.set_path(&format!("/unsubscribe/{}", topic_name));
+    request.set_path(&format!("/{}/unsubscribe", topic_name));
 
     // Convert the CoAP request to bytes and send it
     let packet = request.message.to_bytes().unwrap();

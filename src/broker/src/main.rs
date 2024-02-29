@@ -196,42 +196,11 @@ async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
     let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
 
     match components.as_slice() {
-        ["unsubscribe", topic_name] => {
-            unsubscribe_topic(req, topic_name, req.source.unwrap());
-        },
         // Add resource deletion command here
         _ => {
             // Handle invalid or unrecognized paths
             handle_invalid_path(req);
         },
-    }
-}
-
-fn unsubscribe_topic(req: &mut CoapRequest<SocketAddr>, topic_name: &str, subscriber_addr: SocketAddr) {
-    let mut topics = TOPIC_MAP.lock().unwrap(); // Lock the topic map for safe access
-
-    if let Some(topic) = topics.get_mut(topic_name) {
-        // Topic found, attempt to remove subscriber
-        if let Some(index) = topic.subscribers.iter().position(|s| s.addr == subscriber_addr) {
-            // Subscriber found, remove it
-            topic.subscribers.remove(index);
-            println!("{} unsubscribed from {}", subscriber_addr, topic_name);
-
-            // Prepare a success response
-            if let Some(ref mut message) = req.response {
-                message.message.payload = format!("Unsubscribed from {}", topic_name).into_bytes();
-            }
-        } else {
-            // Subscriber not found, prepare an error response
-            if let Some(ref mut message) = req.response {
-                message.message.payload = b"Subscriber not found".to_vec();
-            }
-        }
-    } else {
-        // Topic not found, prepare an error response
-        if let Some(ref mut message) = req.response {
-            message.message.payload = b"Topic not found".to_vec();
-        }
     }
 }
 
@@ -256,18 +225,12 @@ fn main() {
     let addr = "127.0.0.1:5683";
     Runtime::new().unwrap().block_on(async move {
         let socket_local = tokio::net::UdpSocket::bind(addr).await.unwrap();
-        let socket_multi = tokio::net::UdpSocket::bind("0.0.0.0:5683").await.unwrap();
 
-
-        // listeners on 127.0.0.1:5683 and all coap multicast addresses
         let mut listeners: Vec<Box<dyn Listener>> = Vec::new();
         let listener1 = Box::new(UdpCoapListener::from_socket(socket_local));
-        let mut listener2 =  Box::new(UdpCoapListener::from_socket(socket_multi));
-        let segment: u8 = 0;
-        listener2.enable_all_coap(segment);
 
         listeners.push(listener1);
-        listeners.push(listener2);
+
         let mut server = Server::from_listeners(listeners);
 
         server.disable_observe_handling(true).await;

@@ -32,6 +32,7 @@ async fn handle_command() {
         println!("Enter command number:");
         println!("1. discovery");
         println!("2. subscribe <TopicName>");
+        println!("5. create topic <TopicName> <ResourceType>");
 
         io::stdout().flush().unwrap();
 
@@ -45,6 +46,9 @@ async fn handle_command() {
             },
             ["2", topic_name] | ["subscribe", topic_name] => {
                 subscribe(topic_name).await;
+            },
+            ["5", topic_name, resource_type] | ["create topic", topic_name, resource_type] => { 
+                create_topic(topic_name, resource_type).await; 
             },
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
         }
@@ -119,6 +123,26 @@ async fn discovery(url: &str) {
                 ErrorKind::TimedOut => println!("Request timeout"),   // Windows
                 _ => println!("Request error: {:?}", e),
             }
+        }
+    }
+}
+
+async fn create_topic(topic_name: &str, resource_type: &str) {
+    let url = "coap://127.0.0.1:5683/post"; 
+    let payload = format!(
+        r#"{{ "topic-name": "{}", "resource-type": "{}" }}"#,
+        topic_name, resource_type
+    );
+    let payload_bytes = payload.into_bytes();
+
+    match UdpCoAPClient::post(&url, payload_bytes).await {
+        Ok(response) => {
+            println!("Topic created successfully:");
+            println!("Location-Path: {:?}", response.message.get_option(CoapOption::UriPath).unwrap());
+            println!("Response Payload: {}", String::from_utf8(response.message.payload).unwrap());
+        },
+        Err(e) => {
+            println!("Error creating topic: {}", e);
         }
     }
 }

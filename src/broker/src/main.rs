@@ -189,6 +189,13 @@ async fn inform_subscriber(addr: SocketAddr, resource: &str) -> Result<(), Box<d
 
 fn handle_post(req:&Box<CoapRequest<SocketAddr>>){
     // handle topic config etc
+     // Extract payload from request
+     let payload = String::from_utf8_lossy(&req.message.payload);
+
+     // Parse payload to obtain topic-name and resource-type
+     let parsed_payload: serde_json::Value = serde_json::from_str(payload.as_ref()).unwrap();
+     let topic_name = parsed_payload["topic-name"].as_str().unwrap();
+     let resource_type = parsed_payload["resource-type"].as_str().unwrap();
 }
 
 async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {

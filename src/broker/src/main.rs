@@ -1,5 +1,5 @@
 use coap::server::{Listener, UdpCoapListener};
-use coap_lite::{CoapOption, CoapRequest, ContentFormat, RequestType as Method};
+use coap_lite::{CoapOption, CoapRequest, ResponseType, ContentFormat, RequestType as Method};
 use coap::Server;
 use tokio::runtime::Runtime;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
@@ -193,7 +193,7 @@ async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
     let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
 
     match components.as_slice() {
-        [topic_name, "delete"] => {
+        [topic_name] => {
             delete_topic(req, topic_name, req.source.unwrap());
         },
         _ => {
@@ -202,7 +202,8 @@ async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
         },
     }
 }
-
+/// This function deletes a topic configuration as specified here: https://datatracker.ietf.org/doc/html/draft-ietf-core-coap-pubsub-13#name-deleting-a-topic-configurat
+// TO DO: all subscribers MUST be unsubscribed after this
 fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_addr: SocketAddr) {
     println!("Deleting topic: {}", topic_name);
     let mut topics = TOPIC_MAP.lock().unwrap(); // Lock the topic map for safe access
@@ -215,7 +216,9 @@ fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_addr:
         }
     } else {
         // Topic not found
+        println!("Topic {} does not exist.", topic_name);
         if let Some(ref mut message) = req.response {
+            message.set_status(coap_lite::ResponseType::NotFound);
             message.message.payload = b"Topic not found".to_vec();
         }
     }
@@ -237,7 +240,7 @@ fn initialize_topics() {
 
 fn main() {
     initialize_topics();
-    let addr = "127.0.0.1:5683";
+    let addr = "127.0.0.1:8080";
 
     Runtime::new().unwrap().block_on(async move {
         let socket_local = tokio::net::UdpSocket::bind(addr).await.unwrap();

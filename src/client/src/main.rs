@@ -1,18 +1,18 @@
 use coap::client::ObserveMessage;
 use coap::UdpCoAPClient;
 use coap_lite::{
-    CoapOption, CoapRequest, RequestType as Method
+    CoapOption, CoapRequest, CoapResponse, RequestType as Method
 };
 use std::io::{self, Write};
-use std::io::ErrorKind;
+use std::error::Error;
+use std::io::{ErrorKind, Error as IoError};
 use std::net::SocketAddr;
 use tokio;
 use tokio::net::UdpSocket;
-use std::error::Error;
 use tokio::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
-
+use std::convert::Into;
 use lazy_static::lazy_static;
 
 
@@ -32,8 +32,8 @@ async fn handle_command() {
         println!("Enter command number:");
         println!("1. discovery");
         println!("2. subscribe <TopicName>");
-        println!("5. PUT <TopicName> <Payload>");
-        println!("6. DELETE <TopicName>");
+        println!("5. update topic configuration: PUT <TopicName> <Payload>");
+        println!("6. delete topic configuration: DELETE <TopicName>");
 
         io::stdout().flush().unwrap();
 
@@ -48,10 +48,10 @@ async fn handle_command() {
             ["2", topic_name] | ["subscribe", topic_name] => {
                 subscribe(topic_name).await;
             },
-            ["3", topic_name, payload] | ["PUT", topic_name, payload] => {
+            ["5", topic_name, payload] | ["PUT", topic_name, payload] => {
                 update_topic(topic_name, payload).await;
             },
-            ["4", topic_name] | ["DELETE", topic_name] => {
+            ["6", topic_name] | ["DELETE", topic_name] => {
                 delete_topic(topic_name).await;
             },
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
@@ -59,25 +59,53 @@ async fn handle_command() {
     }
 }
 
+/// Function that handles formatting the server reply in the case a response comes through. Prints the response code and the payload.
+fn server_reply(response: CoapResponse){
+    let code = response.message.header.code;
+            println!(
+                "Server reply: {} {}",
+                code.to_string(),
+                String::from_utf8(response.message.payload).unwrap()
+            );
+}
+fn server_error(e: &IoError) {
+    match e.kind() {
+        ErrorKind::WouldBlock => println!("Request timeout"), // Unix
+        ErrorKind::TimedOut => println!("Request timeout"),   // Windows
+        _ => println!("Request error: {:?}", e),
+    }
+}
+
+
 async fn delete_topic(topic_name: &str) -> Result<(), Box<dyn Error>> {
-    let url = format!("coap://127.0.0.1:5683/{}/delete", topic_name);
+    let url = format!("coap://127.0.0.1:8080/{}", topic_name);
     println!("Client request: {}", url);
 
     match UdpCoAPClient::delete(&url).await {
         Ok(response) => {
-            println!(
-                "Server reply: {}",
-                String::from_utf8(response.message.payload).unwrap()
-            );
+            server_reply(response);
             Ok(())
         }
         Err(e) => {
-            match e.kind() {
-                ErrorKind::WouldBlock => println!("Request timeout"), // Unix
-                ErrorKind::TimedOut => println!("Request timeout"),   // Windows
-                _ => println!("Request error: {:?}", e),
-            }
+            server_error(&e);
             Err(Box::new(e))
+        }
+    }
+}
+
+async fn listen_for_messages(socket: Arc<UdpSocket>) {
+    let mut buf = [0u8; 1024];
+    loop {
+        match socket.recv_from(&mut buf).await {
+            Ok((len, src)) => {
+                // Successfully received a message
+                println!("Received message from {}: {}", src, String::from_utf8_lossy(&buf[..len]));
+            },
+            Err(e) => {
+                // An error occurred
+                eprintln!("Error receiving message: {}", e);
+                break;
+            }
         }
     }
 }
@@ -133,22 +161,7 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
     return Ok(());
 }
 
-async fn listen_for_messages(socket: Arc<UdpSocket>) {
-    let mut buf = [0u8; 1024];
-    loop {
-        match socket.recv_from(&mut buf).await {
-            Ok((len, src)) => {
-                // Successfully received a message
-                println!("Received message from {}: {}", src, String::from_utf8_lossy(&buf[..len]));
-            },
-            Err(e) => {
-                // An error occurred
-                eprintln!("Error receiving message: {}", e);
-                break;
-            }
-        }
-    }
-}
+
 
 async fn discovery(url: &str) {
 

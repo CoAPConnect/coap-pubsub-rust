@@ -240,7 +240,7 @@ fn initialize_topics() {
 
 fn main() {
     initialize_topics();
-    let addr = "127.0.0.1:8080";
+    let addr = "127.0.0.1:5683";
 
     Runtime::new().unwrap().block_on(async move {
         let socket_local = tokio::net::UdpSocket::bind(addr).await.unwrap();

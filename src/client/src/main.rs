@@ -78,7 +78,7 @@ fn server_error(e: &IoError) {
 
 
 async fn delete_topic(topic_name: &str) -> Result<(), Box<dyn Error>> {
-    let url = format!("coap://127.0.0.1:8080/{}", topic_name);
+    let url = format!("coap://127.0.0.1:5683/{}", topic_name);
     println!("Client request: {}", url);
 
     match UdpCoAPClient::delete(&url).await {

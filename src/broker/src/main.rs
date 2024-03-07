@@ -186,6 +186,12 @@ async fn inform_subscriber(addr: SocketAddr, resource: &str) -> Result<(), Box<d
     Ok(())
 }
 
+fn add_topic_to_map(topic_name: String, resource_type: String) {
+    let topic = Topic::new(resource_type);
+    let mut topic_map = TOPIC_MAP.lock().unwrap();
+    topic_map.insert(topic_name, topic);
+    println!("Topic '{}' of type '{}' added to the topic map.", topic_name, resource_type);
+}
 
 fn handle_post(req:&Box<CoapRequest<SocketAddr>>){
     // handle topic config etc
@@ -196,6 +202,9 @@ fn handle_post(req:&Box<CoapRequest<SocketAddr>>){
      let parsed_payload: serde_json::Value = serde_json::from_str(payload.as_ref()).unwrap();
      let topic_name = parsed_payload["topic-name"].as_str().unwrap();
      let resource_type = parsed_payload["resource-type"].as_str().unwrap();
+
+    // Add the topic to the topic map
+    add_topic_to_map(topic_name, resource_type);
 }
 
 async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {

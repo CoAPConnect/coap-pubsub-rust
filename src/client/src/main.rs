@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
 use lazy_static::lazy_static;
-
+use serde_json::json;
 
 lazy_static! {
     static ref LISTENER_SOCKET: Mutex<Option<Arc<UdpSocket>>> = Mutex::new(None);
@@ -128,17 +128,18 @@ async fn discovery(url: &str) {
 }
 
 async fn create_topic(topic_name: &str, resource_type: &str) {
-    let url = "coap://127.0.0.1:5683/post"; 
-    let payload = format!(
-        r#"{{ "topic-name": "{}", "resource-type": "{}" }}"#,
-        topic_name, resource_type
-    );
+    let url = "coap://127.0.0.1:5683/ps"; 
+    let payload = json!({"topic-name": topic_name, "resource-type": resource_type}).to_string();
     let payload_bytes = payload.into_bytes();
 
     match UdpCoAPClient::post(&url, payload_bytes).await {
         Ok(response) => {
             println!("Topic created successfully:");
-            println!("Location-Path: {:?}", response.message.get_option(CoapOption::UriPath).unwrap());
+            if let Some(uri_path) = response.message.get_option(CoapOption::UriPath) {
+                println!("Location-Path: {:?}", uri_path);
+            } else {
+                println!("Location-Path not found in response.");
+            }
             println!("Response Payload: {}", String::from_utf8(response.message.payload).unwrap());
         },
         Err(e) => {

@@ -210,9 +210,13 @@ fn handle_resource_deletion_or_invalid_path(req: &mut CoapRequest<SocketAddr>, c
     println!("Resource deletion or invalid path handling is not implemented.");
 }
 
+/// This function initializes the necessary topics for testing
+/// Later will change to initialise the correct uri paths too as specified in rfc6690 (wellknown/core and ps)
 fn initialize_topics() {
     let mut topics = TOPIC_MAP.lock().unwrap();
-    // Add some predefined topics
+    // TODO:
+    // this has to change later on to work via revamped resources
+    // Add some predefined topics for testing purposes
     topics.insert("topic1".to_string(), Topic::new());
     topics.insert("topic2".to_string(), Topic::new());
     topics.insert("topic3".to_string(), Topic::new());

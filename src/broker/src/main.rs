@@ -3,7 +3,6 @@ use coap_lite::{CoapOption, CoapRequest, ResponseType, ContentFormat, RequestTyp
 use coap::Server;
 use tokio::runtime::Runtime;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
-// use resource::CoapResource;
 use std::collections::HashMap;
 use std::ops::Index;
 use serde_json::json;
@@ -112,6 +111,14 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         },
     }
 }
+
+/// Notifies client of status of request
+fn notify_client(response_type: coap_lite::ResponseType, message: &mut coap_lite::CoapResponse, payload: &str){
+    message.message.payload = payload.as_bytes().to_vec();
+    message.set_status(response_type);
+}
+
+/// Handles forwarding messages from publishers to subscribers
 fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_addr: SocketAddr ){
     let payload = match String::from_utf8(req.message.payload.clone()) {
         Ok(content) => content,
@@ -140,42 +147,46 @@ fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_
         }
 
         if let Some(ref mut message) = req.response {
-            message.message.payload = b"Resource updated successfully".to_vec();
-            message.set_status(coap_lite::ResponseType::Changed);
+            notify_client(coap_lite::ResponseType::Changed, message, "Resource updated succesfully");
             println!("{} updated {}", local_addr.to_string(), topic_name);
         }
     } else {
         // Topic not found
         if let Some(ref mut message) = req.response {
-            message.set_status(coap_lite::ResponseType::NotFound);
-            message.message.payload = b"Topic not found".to_vec();
+            notify_client( coap_lite::ResponseType::NotFound, message, "Topic not found");
         }
     }
 }
+
+/// Handles requests with PUT method, i.e. topic data updating and topic configuration updating
 async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
     let path_str = req.get_path();
     let components: Vec<&str> = path_str.split('/').filter(|s| !s.is_empty()).collect();
     let local_addr = req.source.unwrap();
 
     // Now expecting at least 2 components: "topicName" and "data"
+    // this check will be fixed for when more put stuff comes in 
     if components.len() < 2 {
         eprintln!("Invalid path format. Received: {}", path_str);
+        if let Some(ref mut message) = req.response {
+            notify_client(coap_lite::ResponseType::BadRequest, message, "Invalid path");
+        }
         return;
     }
 
     let topic_name = components[0]; // Adjusted index
     let action = components[1]; // Adjusted index
 
-    // Ensure the action is what we expect, e.g., "data"
+    // handle the request depending on what action is specified
     if action == "data" {
         update_topic_data(req, topic_name, local_addr);
     }
     else {
         eprintln!("Unsupported action: {}", action);
+
         return;
     }
 }
-
 
 async fn inform_subscriber(addr: SocketAddr, resource: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Serialize your resource as JSON, or use it directly if it's already a JSON string
@@ -188,11 +199,11 @@ async fn inform_subscriber(addr: SocketAddr, resource: &str) -> Result<(), Box<d
     Ok(())
 }
 
-
 fn handle_post(req:&Box<CoapRequest<SocketAddr>>){
     // handle topic config etc
 }
 
+/// Handles requests with method DELETE. 
 async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
     let path = req.get_path(); // Extract the URI path from the request
     let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
@@ -216,15 +227,14 @@ fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_addr:
     if topics.remove(topic_name).is_some() {
         // Topic found and removed
         if let Some(ref mut message) = req.response {
-            message.message.payload = b"Topic deleted successfully".to_vec();
+            notify_client(coap_lite::ResponseType::Deleted, message, "Topic deleted succesfully");
             println!("{} deleted {}", local_addr.to_string(), topic_name);
         }
     } else {
         // Topic not found
         println!("Topic {} does not exist.", topic_name);
         if let Some(ref mut message) = req.response {
-            message.set_status(coap_lite::ResponseType::NotFound);
-            message.message.payload = b"Topic not found".to_vec();
+            notify_client(coap_lite::ResponseType::NotFound, message, "Topic not found");
         }
     }
 }
@@ -247,9 +257,7 @@ async fn main() {
     initialize_topics();
     let addr = "127.0.0.1:5683";
 
-
     let socket_local = tokio::net::UdpSocket::bind(addr).await.unwrap();
-    //let socket_multi = tokio::net::UdpSocket::bind("0.0.0.0:5683").await.unwrap();
 
     // listeners on 127.0.0.1:5683 and all coap multicast addresses
     let mut listeners: Vec<Box<dyn Listener>> = Vec::new();
@@ -270,5 +278,4 @@ async fn main() {
         };
         return request;
     }).await.unwrap();
-    
 }

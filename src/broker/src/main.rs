@@ -1,17 +1,14 @@
 use coap::server::{Listener, UdpCoapListener};
-use coap_lite::{CoapOption, CoapRequest, ContentFormat, RequestType as Method};
+use coap_lite::{CoapOption, CoapRequest, RequestType as Method};
 use coap::Server;
 use resource::DataResource;
 use tokio::runtime::Runtime;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::net::{SocketAddr, UdpSocket};
 mod resource;
 use resource::Topic;
 use resource::TopicCollection;
-use std::collections::HashMap;
-use std::ops::Index;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
-use once_cell::sync::Lazy;
 use lazy_static::lazy_static;
 
 // Topic Collection resource to store all topic-related data
@@ -71,10 +68,11 @@ fn handle_subscribe(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_a
         let data = topic_collection_ref.get_data_from_path_mut(data_path.to_string());
         data.add_subscriber(local_addr);
 
-        println!("{:?}", data.get_subscribers());
+        println!("Current subscribers for {}: {:?}",topic_name.to_string(), data.get_subscribers());
 
         // Prepare a success response
         if let Some(ref mut message) = req.response {
+            // payload message just for testing purposes
             message.message.payload = format!("Subscribed to {}", topic_name).into_bytes();
             message.message.set_content_format(coap_lite::ContentFormat::try_from(110).unwrap());
             message.message.set_observe_value(10001);
@@ -143,17 +141,6 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
     }
 
     update_topic_data(req, topic_name).await;
-/* 
-// Lock the mutex
-let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
-
-// Obtain a mutable reference to the TopicCollection inside the Arc
-if let Some(topic_collection_ref) = Arc::get_mut(&mut locked_topic_collection) {
-    // Attempt to find the topic by name
-    if let Some(topic) = topic_collection_ref.find_topic_by_name_mut(topic_name) {
-        // Action is "data", update the topic's resource
-        topic.set_topic_data(payload.clone());
-        */
 
 // Notify all subscribers of the update
 let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();

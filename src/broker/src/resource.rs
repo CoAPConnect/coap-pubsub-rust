@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::collections::HashMap;
 ///Topic resource as struct and its implemented methods.
 ///
 ///Fields are based on IETF draft <https://www.ietf.org/archive/id/draft-ietf-core-coap-pubsub-13.html>
@@ -122,12 +123,14 @@ impl Topic {
 }
 ///Topic collection as struct
 pub struct TopicCollection {
-    /// The name of the topic collection.
+    /// The name of the topic collection aka path for the collection "/name".
     name: String,
     /// The type of the resource associated with the topic collection "core.ps.coll".
     resource_type: String,
     /// The topics in the topic collection.
     topics: Vec<Topic>,
+    /// Data for the topics with path/name String as key and value as String(json format)
+    data: HashMap<String, DataResource>,
 }
 ///Topic collection implementation.
 impl TopicCollection {
@@ -137,6 +140,7 @@ impl TopicCollection {
             name,
             resource_type: String::from("core.ps.coll"),
             topics: Vec::new(),
+            data: HashMap::new(),
         }
     }
 
@@ -157,6 +161,16 @@ impl TopicCollection {
         &self.topics
     }
 
+    /// Returns reference to dataresource from path
+    pub fn get_data_from_path(&self, path: String) -> &DataResource {
+        self.data.get(&path).clone().unwrap()
+    }
+
+    /// Returns data value from path, if path doesn't exist or no value, return empty String
+    pub fn get_data_value_from_path(&self, path: String) -> String {
+        self.data.get(&path).clone().unwrap().get_data().to_string()
+    }
+
     /// Sets the name of the topic collection.
     pub fn set_name(&mut self, name: String) {
         self.name = name;
@@ -171,6 +185,12 @@ impl TopicCollection {
     pub fn set_topics(&mut self, topics: Vec<Topic>) {
         self.topics = topics;
     }
+
+    /// Set new dataresource for a topic, inserts into hashmap
+    pub fn set_data(&mut self, path: String, data: DataResource) {
+        self.data.insert(path, data);
+    }
+
 
     //Additional functionality
 
@@ -198,6 +218,13 @@ impl TopicCollection {
     pub fn find_topic_by_name_mut(&mut self, topic_name: &str) -> Option<&mut Topic> {
         self.topics.iter_mut().find(|topic| topic.get_topic_name() == topic_name)
     }
+
+    /// Changes current data in selected path, aka publishing new data if dataresource exists
+    pub fn update_data_value(&mut self, path: String, value: String) {
+        if let Some(data) = self.data.get_mut(&path) {
+            data.data = value;
+        }
+    }
 }
 
 pub struct DataResource {
@@ -205,6 +232,7 @@ pub struct DataResource {
     parent_topic_uri: String,
     resource_type: String,
     subscibers: Vec<SocketAddr>,
+    data: String,
 }
 
 impl DataResource {
@@ -214,6 +242,7 @@ impl DataResource {
             parent_topic_uri,
             resource_type: String::from("core.ps.data"),
             subscibers: Vec::new(),
+            data: String::new(),
         }
     //Getters and setters
     }
@@ -229,6 +258,9 @@ impl DataResource {
     pub fn get_subscribers(&self) -> &Vec<SocketAddr> {
         &self.subscibers
     }
+    pub fn get_data(&self) -> &String {
+        &self.data
+    }
     pub fn set_data_uri(&mut self, data_uri: String) {
         self.data_uri = data_uri;
     }
@@ -240,6 +272,9 @@ impl DataResource {
     }
     pub fn set_subscribers(&mut self, subscribers: Vec<SocketAddr>) {
         self.subscibers = subscribers;
+    }
+    pub fn set_data(&mut self, data: String) {
+        self.data = data;
     }
     //Adding and removing subscribers
     pub fn add_subscriber(&mut self, subscriber: SocketAddr) {

@@ -166,6 +166,11 @@ impl TopicCollection {
         self.data.get(&path).clone().unwrap()
     }
 
+    /// Returns a mutable reference to dataresource from path
+    pub fn get_data_from_path_mut(&mut self, path: String) -> &mut DataResource {
+        self.data.get_mut(&path).unwrap()
+    }
+
     /// Returns data value from path, if path doesn't exist or no value, return empty String
     pub fn get_data_value_from_path(&self, path: String) -> String {
         self.data.get(&path).clone().unwrap().get_data().to_string()

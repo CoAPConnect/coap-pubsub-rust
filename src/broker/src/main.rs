@@ -1,6 +1,7 @@
 use coap::server::{Listener, UdpCoapListener};
 use coap_lite::{CoapOption, CoapRequest, ContentFormat, RequestType as Method};
 use coap::Server;
+use resource::DataResource;
 use tokio::runtime::Runtime;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 mod resource;
@@ -19,16 +20,12 @@ use lazy_static::lazy_static;
 // Accessing the TopicCollection from the mutex guard
 // let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
 // Or if mutable collection is needed:
+// let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+// let mut topic_collection_ref = Arc::get_mut(&mut locked_topic_collection)
 
 lazy_static! {
     static ref TOPIC_COLLECTION_MUTEX: Mutex<Arc<TopicCollection>> = Mutex::new(Arc::new(TopicCollection::new("TopicCollection".to_string())));
 }
-
-/*
-static TOPIC_MAP: Lazy<Arc<Mutex<HashMap<String, Topic>>>> = Lazy::new(|| {
-    Arc::new(Mutex::new(HashMap::new()))
-});
- */
 
 fn handle_broker_discovery(req: &mut CoapRequest<SocketAddr>){
     println!("Handling broker discovery");
@@ -36,7 +33,7 @@ fn handle_broker_discovery(req: &mut CoapRequest<SocketAddr>){
     let response = req.response.as_mut().unwrap();
     response.message.add_option(CoapOption::ContentFormat, (b"127.0.0.1:5683").to_vec());
 
-    // actual data is sent in the conrentformat option, this line is for testing purposes
+    // actual data is sent in the contentformat option, this line is for testing purposes
     response.message.payload = (b"127.0.0.1:5683").to_vec()
 }
 
@@ -63,16 +60,18 @@ fn handle_discovery(req: &mut CoapRequest<SocketAddr>) {
 fn handle_subscribe(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_addr: SocketAddr) {
     println!("Beginning subscription handling");
     
-    let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
-    let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
+    let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+    let topic_collection_ref = Arc::get_mut(&mut locked_topic_collection).unwrap();
 
+    
     // Check if the topic exists
     if let Some(topic) = topic_collection_ref.find_topic_by_name(topic_name) {
         // Topic exists, add subscriber
+        let data_path = topic.get_topic_data();
+        let data = topic_collection_ref.get_data_from_path_mut(data_path.to_string());
+        data.add_subscriber(local_addr);
 
-        //let subscriber = Subscriber { addr: local_addr};
-        //topic.subscribers.push(subscriber);
-        // TODO: NO CURRENT COLLECTION FOR SUBSCRIBERS!
+        println!("{:?}", data.get_subscribers());
 
         // Prepare a success response
         if let Some(ref mut message) = req.response {
@@ -246,27 +245,52 @@ fn handle_resource_deletion_or_invalid_path(req: &mut CoapRequest<SocketAddr>, c
 }
 
 /// Initializes 3 topics to topic collection with names "topic1, topic2 & topic3"
+/// paths are 123, data/123 ... 456, data/456, ... 789, data/789
 fn initialize_topics() {
-    //let mut topics = TOPIC_MAP.lock().unwrap();
-    // 3 hardcoded example topics
+    // lock mutex
     let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
     // Accessing the TopicCollection from the mutex guard
     let topic_collection = match Arc::get_mut(&mut locked_topic_collection) {
         Some(topic_collection) => topic_collection,
         None => {
             // Handle the case where Arc::get_mut() returns None
-            eprintln!("Failed to obtain mutable reference to TopicCollection");
+            println!("Failed to obtain mutable reference to TopicCollection");
             return; // Or any other appropriate error handling
         }
     };
 
-    let topic1 = Topic::new("topic1".to_string(), "core.ps.conf".to_string());
-    let topic2 = Topic::new("topic2".to_string(), "core.ps.conf".to_string());
-    let topic3 = Topic::new("topic3".to_string(), "core.ps.conf".to_string());
+    let example_data = "{temperature: 20}";
+    let data_path1 = "data/123".to_string();
+    let data_path2 = "data/456".to_string();
+    let data_path3 = "data/789".to_string();
+
+    let mut topic1 = Topic::new("topic1".to_string(), "core.ps.conf".to_string());
+    topic1.set_topic_uri("123".to_string());
+    topic1.set_topic_data(data_path1.clone());
+    let mut topic2 = Topic::new("topic2".to_string(), "core.ps.conf".to_string());
+    topic1.set_topic_uri("456".to_string());
+    topic2.set_topic_data("data/456".to_string());
+    let mut topic3 = Topic::new("topic3".to_string(), "core.ps.conf".to_string());
+    topic1.set_topic_uri("456".to_string());
+    topic3.set_topic_data("data/789".to_string());
+
+
     topic_collection.add_topic(topic1);
     topic_collection.add_topic(topic2);
     topic_collection.add_topic(topic3);
     // Add as many topics / with specific settings as needed for testing
+
+    let mut data1 = DataResource::new(data_path1.clone(), "123".to_string());
+    data1.set_data(data_path1.clone());
+    topic_collection.set_data(data_path1, data1);
+
+    let mut data2 = DataResource::new(data_path2.clone(), "456".to_string());
+    data2.set_data(example_data.to_string());
+    topic_collection.set_data(data_path2.clone(), data2);
+
+    let mut data3 = DataResource::new(data_path3.clone(), "789".to_string());
+    data3.set_data(example_data.to_string());
+    topic_collection.set_data(data_path3.clone(), data3);
 }
 
 fn main() {
@@ -296,9 +320,6 @@ fn main() {
                 &Method::Delete => handle_delete(&mut *request).await,
                 _ => println!("Error, request by method that is not supported."),
             };
-
-
-
             // respond to request
             return request;
         }).await.unwrap();

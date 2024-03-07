@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 ///Topic resource as struct and its implemented methods.
 ///
 ///Fields are based on IETF draft <https://www.ietf.org/archive/id/draft-ietf-core-coap-pubsub-13.html>
@@ -196,5 +197,55 @@ impl TopicCollection {
     /// Finds a topic in the topic collection by its name and returns a mutable topic.
     pub fn find_topic_by_name_mut(&mut self, topic_name: &str) -> Option<&mut Topic> {
         self.topics.iter_mut().find(|topic| topic.get_topic_name() == topic_name)
+    }
+}
+
+pub struct DataResource {
+    data_uri: String,
+    parent_topic_uri: String,
+    resource_type: String,
+    subscibers: Vec<SocketAddr>,
+}
+
+impl DataResource {
+    pub fn new(data_uri: String, parent_topic_uri: String) -> Self {
+        DataResource {
+            data_uri,
+            parent_topic_uri,
+            resource_type: String::from("core.ps.data"),
+            subscibers: Vec::new(),
+        }
+    //Getters and setters
+    }
+    pub fn get_data_uri(&self) -> &str {
+        &self.data_uri
+    }
+    pub fn get_parent_topic_uri(&self) -> &str {
+        &self.parent_topic_uri
+    }
+    pub fn get_resource_type(&self) -> &str {
+        &self.resource_type
+    }
+    pub fn get_subscribers(&self) -> &Vec<SocketAddr> {
+        &self.subscibers
+    }
+    pub fn set_data_uri(&mut self, data_uri: String) {
+        self.data_uri = data_uri;
+    }
+    pub fn set_parent_topic_uri(&mut self, parent_topic_uri: String) {
+        self.parent_topic_uri = parent_topic_uri;
+    }
+    pub fn set_resource_type(&mut self, resource_type: String) {
+        self.resource_type = resource_type;
+    }
+    pub fn set_subscribers(&mut self, subscribers: Vec<SocketAddr>) {
+        self.subscibers = subscribers;
+    }
+    //Adding and removing subscribers
+    pub fn add_subscriber(&mut self, subscriber: SocketAddr) {
+        self.subscibers.push(subscriber);
+    }
+    pub fn remove_subscriber(&mut self, subscriber: SocketAddr) {
+        self.subscibers.retain(|s| s != &subscriber);
     }
 }

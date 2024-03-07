@@ -3,34 +3,33 @@ use coap_lite::{CoapOption, CoapRequest, ContentFormat, RequestType as Method};
 use coap::Server;
 use tokio::runtime::Runtime;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
-// use resource::CoapResource;
+mod resource;
+use resource::Topic;
+use resource::TopicCollection;
 use std::collections::HashMap;
 use std::ops::Index;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use once_cell::sync::Lazy;
+use lazy_static::lazy_static;
 
-struct Subscriber {
-    addr: SocketAddr,
+// Topic Collection resource to store all topic-related data
+//static mut TOPIC_COLLECTION: Arc<TopicCollection> = Arc::new(TopicCollection::new("TopicCollection".to_string()));
+// Mutex for TOPIC_COLLECTION
+//static TOPIC_COLLECTION_MUTEX: std::sync::Mutex<Arc<TopicCollection>> = Mutex::new(unsafe { TOPIC_COLLECTION });
+// Lock the mutex to access the topic_collection
+// let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+// Accessing the TopicCollection from the mutex guard
+// let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
+lazy_static! {
+    static ref TOPIC_COLLECTION_MUTEX: Mutex<Arc<TopicCollection>> = Mutex::new(Arc::new(TopicCollection::new("TopicCollection".to_string())));
 }
 
-struct Topic {
-    subscribers: Vec<Subscriber>,
-    resource: String,
-}
-
-impl Topic {
-    fn new() -> Self {
-        Topic {
-            subscribers: Vec::new(),
-            resource: String::new(),
-        }
-    }
-}
-
+/*
 static TOPIC_MAP: Lazy<Arc<Mutex<HashMap<String, Topic>>>> = Lazy::new(|| {
     Arc::new(Mutex::new(HashMap::new()))
 });
+ */
 
 fn handle_broker_discovery(req: &mut CoapRequest<SocketAddr>){
     println!("Handling broker discovery");
@@ -43,29 +42,47 @@ fn handle_broker_discovery(req: &mut CoapRequest<SocketAddr>){
 }
 
 fn handle_discovery(req: &mut CoapRequest<SocketAddr>) {
-    println!("Handling discovery");
+    println!("Handling topic discovery");
 
-    let topics = TOPIC_MAP.lock().unwrap();
-    let topic_list: Vec<String> = topics.keys().cloned().collect();
+    // Lock the mutex to access the topic_collection
+    let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+    // Accessing the TopicCollection from the mutex guard
+    let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
+
+    let topics = topic_collection_ref.get_topics();
+
+    let topic_list: Vec<String> = topics.iter().map(|topic| topic.get_topic_name().to_owned()).collect();
+
+    // Alternative loop if map doesn't work
+    /* 
+    let mut topic_list: Vec<String> = Vec::new();
+    for topic in topics {
+        topic_list.push(topic.get_topic_name().to_owned());
+    }
+    */
+
     let payload = json!({"topics": topic_list}).to_string();
+    let payload_clone = payload.clone();
 
     if let Some(ref mut message) = req.response { 
         message.message.payload = payload.into_bytes();
     }
-    println!("Discovery response sent");
+    println!("Topic discovery response sent with payload: {}", payload_clone);
 }
 
 fn handle_subscribe(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_addr: SocketAddr) {
     println!("Beginning subscription handling");
     
-    let mut topics = TOPIC_MAP.lock().unwrap(); // Lock the topic map for safe access
+    let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+    let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
 
     // Check if the topic exists
-    if let Some(topic) = topics.get_mut(topic_name) {
+    if let Some(topic) = topic_collection_ref.find_topic_by_name(topic_name) {
         // Topic exists, add subscriber
 
-        let subscriber = Subscriber { addr: local_addr};
-        topic.subscribers.push(subscriber);
+        //let subscriber = Subscriber { addr: local_addr};
+        //topic.subscribers.push(subscriber);
+        // TODO: NO CURRENT COLLECTION FOR SUBSCRIBERS!
 
         // Prepare a success response
         if let Some(ref mut message) = req.response {
@@ -144,12 +161,19 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
         }
     };
 
-    let mut topics = TOPIC_MAP.lock().unwrap();
+    // lock mutex
+    let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
 
-    if let Some(topic) = topics.get_mut(topic_name) {
-        // Action is "data", update the topic's resource
-        topic.resource = payload.clone();
+    // Obtain a mutable reference to the TopicCollection inside the Arc
+    if let Some(topic_collection_ref) = Arc::get_mut(&mut locked_topic_collection) {
+        // Attempt to find the topic by name
+        if let Some(topic) = topic_collection_ref.find_topic_by_name_mut(topic_name) {
+            // Action is "data", update the topic's resource
+            topic.set_topic_data(payload.clone());
+        }
 
+        // TODO NO SUBSCRIBER COLLECTION YET!
+        /*
         // Notify all subscribers of the update
         for subscriber in &topic.subscribers {
             let resource_clone = topic.resource.clone();
@@ -161,6 +185,7 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
                 }
             });
         }
+        */
 
         if let Some(ref mut message) = req.response {
             message.message.payload = b"Resource updated successfully".to_vec();
@@ -211,11 +236,25 @@ fn handle_resource_deletion_or_invalid_path(req: &mut CoapRequest<SocketAddr>, c
 }
 
 fn initialize_topics() {
-    let mut topics = TOPIC_MAP.lock().unwrap();
-    // Add some predefined topics
-    topics.insert("topic1".to_string(), Topic::new());
-    topics.insert("topic2".to_string(), Topic::new());
-    topics.insert("topic3".to_string(), Topic::new());
+    //let mut topics = TOPIC_MAP.lock().unwrap();
+    // 3 hardcoded example topics
+    let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+    // Accessing the TopicCollection from the mutex guard
+    let topic_collection = match Arc::get_mut(&mut locked_topic_collection) {
+        Some(topic_collection) => topic_collection,
+        None => {
+            // Handle the case where Arc::get_mut() returns None
+            eprintln!("Failed to obtain mutable reference to TopicCollection");
+            return; // Or any other appropriate error handling
+        }
+    };
+
+    let topic1 = Topic::new("topic1".to_string(), "core.ps.conf".to_string());
+    let topic2 = Topic::new("topic2".to_string(), "core.ps.conf".to_string());
+    let topic3 = Topic::new("topic3".to_string(), "core.ps.conf".to_string());
+    topic_collection.add_topic(topic1);
+    topic_collection.add_topic(topic2);
+    topic_collection.add_topic(topic3);
     // Add as many topics as needed for testing
 }
 

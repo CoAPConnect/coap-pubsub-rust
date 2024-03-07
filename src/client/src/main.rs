@@ -117,18 +117,11 @@ async fn update_topic(topic_name: &str, payload: &str) -> Result<(), Box<dyn Err
 
     match UdpCoAPClient::put(&url, data).await {
         Ok(response) => {
-            println!(
-                "Server reply: {}",
-                String::from_utf8(response.message.payload).unwrap()
-            );
+            server_reply(response);
             Ok(())
         }
         Err(e) => {
-            match e.kind() {
-                ErrorKind::WouldBlock => println!("Request timeout"), // Unix
-                ErrorKind::TimedOut => println!("Request timeout"),   // Windows
-                _ => println!("Request error: {:?}", e),
-            }
+            server_error(&e);
             Err(Box::new(e))
         }
     }

@@ -209,10 +209,10 @@ async fn inform_subscriber(addr: SocketAddr, resource: &str) -> Result<(), Box<d
 
 /// Creates a new topic
 fn create_topic(topic_name: &String, resource_type: &String, req: &mut coap_lite::CoapRequest<SocketAddr>) {
-    let topic = Topic::new();
-    let mut topic_map = TOPIC_MAP.lock().unwrap();
-    let topic_name_cloned = topic_name.clone();
-    topic_map.insert(topic_name_cloned, topic);
+    let topic = Topic::new(topic_name.clone(), resource_type.clone());
+    let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+    let mut topic_collection_ref = Arc::get_mut(&mut locked_topic_collection);
+    topic_collection_ref.as_mut().unwrap().add_topic(topic);
     println!("Topic '{}' of type '{}' added to the topic map.", topic_name, resource_type);
 
     if let Some(ref mut message) = req.response {

@@ -186,9 +186,33 @@ async fn inform_subscriber(addr: SocketAddr, resource: &str) -> Result<(), Box<d
     Ok(())
 }
 
+/// Creates a new topic
+fn create_topic(topic_name: &String, resource_type: &String, req: &mut coap_lite::CoapRequest<SocketAddr>) {
+    let topic = Topic::new();
+    let mut topic_map = TOPIC_MAP.lock().unwrap();
+    let topic_name_cloned = topic_name.clone();
+    topic_map.insert(topic_name_cloned, topic);
+    println!("Topic '{}' of type '{}' added to the topic map.", topic_name, resource_type);
 
-fn handle_post(req:&Box<CoapRequest<SocketAddr>>){
+    if let Some(ref mut message) = req.response {
+        message.message.payload = b"Topic created succesfully".to_vec();
+        message.set_status(coap_lite::ResponseType::Created);
+    }
+}
+
+/// Handles post requests, i.e. topic creation and topic configuration updates
+fn handle_post(req:&mut Box<CoapRequest<SocketAddr>>){
     // handle topic config etc
+     // Extract payload from request
+     let payload = String::from_utf8_lossy(&req.message.payload);
+
+     // Parse payload to obtain topic-name and resource-type
+     let parsed_payload: serde_json::Value = serde_json::from_str(payload.as_ref()).unwrap();
+     let topic_name: &String = &parsed_payload["topic-name"].as_str().unwrap().to_string();
+     let resource_type: &String = &parsed_payload["resource-type"].as_str().unwrap().to_string();
+
+    // Add the topic to the topic map
+    create_topic(topic_name, resource_type, req);
 }
 
 async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
@@ -244,7 +268,7 @@ fn main() {
         server.run(|mut request: Box<CoapRequest<SocketAddr>>| async {
             match request.get_method() {
                 &Method::Get => handle_get(&mut *request),
-                &Method::Post => handle_post(&request),
+                &Method::Post => handle_post(&mut request),
                 &Method::Put => handle_put(&mut *request).await,
                 &Method::Delete => handle_delete(&mut *request).await,
                 _ => println!("request by other method"),

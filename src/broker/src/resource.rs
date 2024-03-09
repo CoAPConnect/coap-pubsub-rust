@@ -27,6 +27,8 @@ pub struct Topic {
     pub max_subscribers: u32,
     /// The amount of time in seconds between each observer check, removing uninterested observers
     pub observe_check: u32,
+    /// KAVAN TEST data resource as part of topic
+    pub data_resource: DataResource,
 }
 
 ///Topic implementation.
@@ -46,8 +48,22 @@ impl Topic {
             expiration_date: String::new(),
             max_subscribers: u32::MAX,
             observe_check: 86400,
+            data_resource: DataResource::new("def".to_string(),"def".to_string()),
         }
     }
+
+
+    pub fn set_data_resource(&mut self, dr: DataResource){
+        self.data_resource=dr;
+    }
+    pub fn get_data_resource(&mut self) -> &mut DataResource{
+        &mut self.data_resource
+    }
+    pub fn get_dr (&self) -> &DataResource{
+        &self.data_resource
+    }
+
+
     ///Set the URI of the topic.
     pub fn set_topic_uri(&mut self, topic_uri: String) {
         self.topic_uri = topic_uri;
@@ -163,6 +179,10 @@ impl TopicCollection {
 
     /// Returns reference to dataresource from path
     pub fn get_data_from_path(&self, path: String) -> &DataResource {
+        println!("{}",path);
+        for (key, value) in &self.data{
+            println!("{}", key);
+        }
         self.data.get(&path).clone().unwrap()
     }
 

@@ -68,11 +68,12 @@ fn handle_subscribe(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_a
 
     
     // Check if the topic exists
-    if let Some(topic) = topic_collection_ref.find_topic_by_name(topic_name) {
+    if let Some(topic) = topic_collection_ref.find_topic_by_name_mut(topic_name) {
         // Topic exists, add subscriber
-        let data_path = topic.get_topic_data();
-        let data = topic_collection_ref.get_data_from_path_mut(data_path.to_string());
-        data.add_subscriber(local_addr);
+        topic.get_data_resource().add_subscriber(local_addr);
+        let data = topic.get_data_resource();
+        //let data = topic_collection_ref.get_data_from_path_mut(data_path.to_string());
+        //data.add_subscriber(local_addr);
 
         println!("Current subscribers for {}: {:?}",topic_name.to_string(), data.get_subscribers());
 
@@ -126,6 +127,8 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
     }
 }
 
+
+
 async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
     let path_str = req.get_path();
     let components: Vec<&str> = path_str.split('/').filter(|s| !s.is_empty()).collect();
@@ -147,37 +150,7 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
 
     update_topic_data(req, topic_name).await;
 
-    // Notify all subscribers of the update
-    let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
-    let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
-
     
-    let topic = topic_collection_ref.find_topic_by_name(topic_name).unwrap();
-    let topic_data_path = topic.get_topic_data().to_string().clone();
-
-    for subscriber in topic_collection_ref.get_data_from_path(topic_data_path).get_subscribers() {
-        let path = topic.get_topic_data().to_string().clone();
-        let resource_clone = topic_collection_ref.get_data_from_path(path.clone()).get_data().clone();
-        
-        // Clone the necessary data and move it into the async block
-        let subscriber_clone = subscriber.clone();
-        let resource_clone = resource_clone.clone();
-        tokio::spawn(async move {
-            if let Err(e) = inform_subscriber(subscriber_clone, &resource_clone).await {
-                eprintln!("Failed to notify subscriber {}: {}", subscriber_clone, e);
-            }
-        });
-    }
-
-    if let Some(ref mut message) = req.response {
-        message.message.payload = b"Resource updated successfully".to_vec();
-        println!("{} was updated", topic_name);
-    } else {
-        // Topic not found
-        if let Some(ref mut message) = req.response {
-            message.message.payload = b"Topic not found".to_vec();
-        }
-    }
 
 }
 
@@ -198,15 +171,51 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_name: &str) 
         // Attempt to find the topic by name
         if let Some(topic) = topic_collection_ref.find_topic_by_name_mut(topic_name) {
             // Action is "data", update the topic's resource
-            topic.set_topic_data(payload.clone());
+            topic.get_data_resource().set_data(payload.to_string());
+            println!("YES");
+        }
+        else{
+            println!("SETTING TOPIC DATA FAILED");
         }
     }
+    // Notify all subscribers of the update
+    //let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+    let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
+
+    
+    let topic = topic_collection_ref.find_topic_by_name(topic_name).unwrap();
+    //let topic_data_path = topic.get_topic_data().to_string().clone();
+    //println!("{}",topic_data_path);
+    for subscriber in topic.get_dr().get_subscribers() {
+        //let path = topic.get_topic_data().to_string().clone();
+        //let resource_clone = topic_collection_ref.get_data_from_path(path.clone()).get_data().clone();
+        let path = "data/".to_owned()+topic.get_dr().get_data();
+        // Clone the necessary data and move it into the async block
+        let subscriber_clone = subscriber.clone();
+        println!("{}",subscriber_clone);
+        //let resource_clone = resource_clone.clone();
+        tokio::spawn(async move {
+            if let Err(e) = inform_subscriber(subscriber_clone, &path).await {
+                eprintln!("Failed to notify subscriber {}: {}", subscriber_clone, e);
+            }
+        });
+    }
+
+    if let Some(ref mut message) = req.response {
+        message.message.payload = b"Resource updated successfully".to_vec();
+        println!("{} was updated", topic_name);
+    } else {
+        // Topic not found
+        if let Some(ref mut message) = req.response {
+            message.message.payload = b"Topic not found".to_vec();
+        }
+    }
+    
 }
 
 async fn inform_subscriber(addr: SocketAddr, resource: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Serialize your resource as JSON, or use it directly if it's already a JSON string
     let payload = resource.as_bytes();
-
     // Placeholder for asynchronous network call
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.send_to(&payload, &addr)?;
@@ -301,14 +310,15 @@ fn initialize_topics() {
     let data_path3 = "data/789".to_string();
 
     let mut topic1 = Topic::new("topic1".to_string(), "core.ps.conf".to_string());
-    topic1.set_topic_uri("123".to_string());
-    topic1.set_topic_data(data_path1.clone());
+    topic1.get_data_resource().set_data("123".to_string());
+    //topic1.set_topic_uri("123".to_string());
+    //topic1.set_topic_data("data/123".to_string());
     let mut topic2 = Topic::new("topic2".to_string(), "core.ps.conf".to_string());
-    topic1.set_topic_uri("456".to_string());
-    topic2.set_topic_data("data/456".to_string());
+    //topic1.set_topic_uri("456".to_string());
+    //topic2.set_topic_data("data/456".to_string());
     let mut topic3 = Topic::new("topic3".to_string(), "core.ps.conf".to_string());
-    topic1.set_topic_uri("456".to_string());
-    topic3.set_topic_data("data/789".to_string());
+    //topic1.set_topic_uri("456".to_string());
+    //topic3.set_topic_data("data/789".to_string());
 
 
     topic_collection.add_topic(topic1);
@@ -318,15 +328,15 @@ fn initialize_topics() {
 
     let mut data1 = DataResource::new(data_path1.clone(), "123".to_string());
     data1.set_data(data_path1.clone());
-    topic_collection.set_data(data_path1, data1);
+    //topic_collection.set_data(data_path1, data1);
 
     let mut data2 = DataResource::new(data_path2.clone(), "456".to_string());
     data2.set_data(example_data.to_string());
-    topic_collection.set_data(data_path2.clone(), data2);
+    //topic_collection.set_data(data_path2.clone(), data2);
 
     let mut data3 = DataResource::new(data_path3.clone(), "789".to_string());
     data3.set_data(example_data.to_string());
-    topic_collection.set_data(data_path3.clone(), data3);
+    //topic_collection.set_data(data_path3.clone(), data3);
 }
 fn main() {
     initialize_topics();

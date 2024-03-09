@@ -24,7 +24,7 @@ lazy_static! {
 async fn main() {
     handle_command().await;
 }
-static global_url: &str = "127.0.0.1:5684";
+static global_url: &str = "127.0.0.1:5683";
 
 async fn handle_command() {
     let discovery_url = "coap://".to_owned()+global_url+"/discovery";
@@ -33,8 +33,8 @@ async fn handle_command() {
         println!("Enter command number:");
         println!("1. discovery");
         println!("2. subscribe <TopicName>");
-        println!("3. create topic <TopicName");
-        println!("5. update topic configuration: PUT <TopicName> <Payload>");
+        println!("3. create topic <TopicName>");
+        println!("5. update topic data: PUT <TopicName> <Payload>");
         println!("6. delete topic configuration: DELETE <TopicName>");
 
         io::stdout().flush().unwrap();
@@ -116,7 +116,7 @@ async fn listen_for_messages(socket: Arc<UdpSocket>) {
 }
 */
 async fn update_topic(topic_name: &str, payload: &str) -> Result<(), Box<dyn Error>> {
-    let url = format!("{}/{}/data",global_url, topic_name);
+    let url = format!("{}/{}/data","coap://".to_owned()+global_url, topic_name);
     let data = payload.as_bytes().to_vec();
     println!("Client request: {}", url);
 
@@ -160,6 +160,7 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
     return Ok(());
 }
 
+
 /// Listen for responses and future publifications on followed topics
 /// In the future should check that the response has observe value to see subscription was ok
 async fn listen_for_messages(socket: Arc<UdpSocket>) {
@@ -168,10 +169,7 @@ async fn listen_for_messages(socket: Arc<UdpSocket>) {
         match socket.recv_from(&mut buf).await {
             Ok((len, src)) => {
                 // Successfully received a message
-                let packet = Packet::from_bytes(&buf[..len]).unwrap();
-                let request = CoapRequest::from_packet(packet, src);
-                let msg = String::from_utf8(request.message.payload).unwrap();
-                println!("Received message from {}: {}", src, msg);
+                println!("Received message from {}: {}", src, String::from_utf8_lossy(&buf[..len]));
             },
             Err(e) => {
                 // An error occurred

@@ -1,7 +1,7 @@
 use coap::client::ObserveMessage;
 use coap::UdpCoAPClient;
 use coap_lite::{
-    CoapOption, CoapRequest, CoapResponse, RequestType as Method
+    CoapOption, CoapRequest, CoapResponse, Packet, RequestType as Method
 };
 use std::io::{self, Write};
 use std::error::Error;
@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::convert::Into;
 use lazy_static::lazy_static;
-
+use serde_json::json;
 
 lazy_static! {
     static ref LISTENER_SOCKET: Mutex<Option<Arc<UdpSocket>>> = Mutex::new(None);
@@ -142,7 +142,8 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
 
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
     request.set_method(Method::Get);
-    request.set_path(&format!("/{}/subscribe", topic_name));
+    request.set_path(&format!("/subscribe/{}", topic_name));
+    request.message.set_observe_value(0);
 
     let packet = request.message.to_bytes().unwrap();
     listen_socket.send_to(&packet[..], "127.0.0.1:5683").await.expect("Could not send the data");
@@ -154,6 +155,27 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
     return Ok(());
 }
 
+/// Listen for responses and future publifications on followed topics
+/// In the future should check that the response has observe value to see subscription was ok
+async fn listen_for_messages(socket: Arc<UdpSocket>) {
+    let mut buf = [0u8; 1024];
+    loop {
+        match socket.recv_from(&mut buf).await {
+            Ok((len, src)) => {
+                // Successfully received a message
+                let packet = Packet::from_bytes(&buf[..len]).unwrap();
+                let request = CoapRequest::from_packet(packet, src);
+                let msg = String::from_utf8(request.message.payload).unwrap();
+                println!("Received message from {}: {}", src, msg);
+            },
+            Err(e) => {
+                // An error occurred
+                eprintln!("Error receiving message: {}", e);
+                break;
+            }
+        }
+    }
+}
 
 
 async fn discovery(url: &str) {
@@ -173,6 +195,25 @@ async fn discovery(url: &str) {
                 ErrorKind::TimedOut => println!("Request timeout"),   // Windows
                 _ => println!("Request error: {:?}", e),
             }
+        }
+    }
+}
+
+async fn create_topic(topic_name: &str) {
+    let url = "coap://127.0.0.1:5683/ps"; 
+    let resource_type="core.ps.conf";
+    let payload = json!({"topic-name": topic_name, "resource-type": resource_type}).to_string();
+    let payload_bytes = payload.into_bytes();
+    
+
+    match UdpCoAPClient::post(&url, payload_bytes).await {
+        Ok(response) => {
+            let payload_string = String::from_utf8(response.message.payload).unwrap();
+            let code = response.message.header.get_code().to_string();
+            println!("Server reply: {} {}",code,payload_string);
+        },
+        Err(e) => {
+            println!("Error creating topic: {}", e);
         }
     }
 }

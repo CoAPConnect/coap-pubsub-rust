@@ -35,7 +35,7 @@ async fn handle_command() {
         println!("2. subscribe <TopicName>");
         println!("3. create topic <TopicName>");
         println!("5. update topic data: PUT <TopicName> <Payload>");
-        println!("6. delete topic configuration: DELETE <TopicName>");
+        println!("6. delete topic configuration: DELETE <Topic URI>");
 
         io::stdout().flush().unwrap();
 

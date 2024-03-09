@@ -273,16 +273,16 @@ async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
 }
 /// This function deletes a topic configuration as specified here: https://datatracker.ietf.org/doc/html/draft-ietf-core-coap-pubsub-13#name-deleting-a-topic-configurat
 // TO DO: all subscribers MUST be unsubscribed after this
-fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_addr: SocketAddr) {
-    println!("Deleting topic: {}", topic_name);
+fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_uri: &str, local_addr: SocketAddr) {
+    println!("Deleting topic: {}", topic_uri);
     let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap(); // Lock the topic map for safe access
     let mut topic_collection_ref = Arc::get_mut(&mut locked_topic_collection);
     
-    topic_collection_ref.as_mut().unwrap().remove_topic(topic_name);
+    topic_collection_ref.as_mut().unwrap().remove_topic(topic_uri);
         // Topic found and removed
         if let Some(ref mut message) = req.response {
             notify_client(coap_lite::ResponseType::Deleted, message, "Topic deleted succesfully");
-            println!("{} deleted {}", local_addr.to_string(), topic_name);
+            println!("{} deleted {}", local_addr.to_string(), topic_uri);
         }
 
 }

@@ -24,14 +24,14 @@ lazy_static! {
 async fn main() {
     handle_command().await;
 }
-static global_url: &str = "127.0.0.1:5683";
+static GLOBAL_URL: &str = "127.0.0.1:5683";
 
 async fn handle_command() {
-    let discovery_url = "coap://".to_owned()+global_url+"/discovery";
+    let discovery_url = "coap://".to_owned()+GLOBAL_URL+"/discovery";
 
     loop {
         println!("Enter command number:");
-        println!("1. discovery");
+        println!("1. topic discovery");
         println!("2. subscribe <TopicName>");
         println!("3. create topic <TopicName>");
         println!("5. update topic data: PUT <TopicName> <Payload>");
@@ -83,7 +83,7 @@ fn server_error(e: &IoError) {
 
 
 async fn delete_topic(topic_name: &str) -> Result<(), Box<dyn Error>> {
-    let url = format!("{}/{}", "coap://".to_owned()+global_url,topic_name);
+    let url = format!("{}/{}", "coap://".to_owned()+GLOBAL_URL,topic_name);
     println!("Client request: {}", url);
 
     match UdpCoAPClient::delete(&url).await {
@@ -97,26 +97,9 @@ async fn delete_topic(topic_name: &str) -> Result<(), Box<dyn Error>> {
         }
     }
 }
-/** 
-async fn listen_for_messages(socket: Arc<UdpSocket>) {
-    let mut buf = [0u8; 1024];
-    loop {
-        match socket.recv_from(&mut buf).await {
-            Ok((len, src)) => {
-                // Successfully received a message
-                println!("Received message from {}: {}", src, String::from_utf8_lossy(&buf[..len]));
-            },
-            Err(e) => {
-                // An error occurred
-                eprintln!("Error receiving message: {}", e);
-                break;
-            }
-        }
-    }
-}
-*/
+
 async fn update_topic(topic_name: &str, payload: &str) -> Result<(), Box<dyn Error>> {
-    let url = format!("{}/{}/data","coap://".to_owned()+global_url, topic_name);
+    let url = format!("{}/{}/data","coap://".to_owned()+GLOBAL_URL, topic_name);
     let data = payload.as_bytes().to_vec();
     println!("Client request: {}", url);
 
@@ -143,7 +126,7 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
         ls.as_ref().unwrap().clone()
     };
 
-    let local_addr = listen_socket.local_addr()?;
+    //let local_addr = listen_socket.local_addr()?;
 
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
     request.set_method(Method::Get);
@@ -151,9 +134,9 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
     request.message.set_observe_value(0);
 
     let packet = request.message.to_bytes().unwrap();
-    listen_socket.send_to(&packet[..], &global_url).await.expect("Could not send the data");
+    listen_socket.send_to(&packet[..], &GLOBAL_URL).await.expect("Could not send the data");
 
-    let handle = tokio::spawn(async move {
+    let _handle = tokio::spawn(async move {
         listen_for_messages(listen_socket).await;
     });
 
@@ -169,7 +152,10 @@ async fn listen_for_messages(socket: Arc<UdpSocket>) {
         match socket.recv_from(&mut buf).await {
             Ok((len, src)) => {
                 // Successfully received a message
-                println!("Received message from {}: {}", src, String::from_utf8_lossy(&buf[..len]));
+                let packet = Packet::from_bytes(&buf[..len]).unwrap();
+                let request = CoapRequest::from_packet(packet, src);
+                let msg = String::from_utf8(request.message.payload).unwrap();
+                println!("Received message from {}: {}", src, msg);
             },
             Err(e) => {
                 // An error occurred
@@ -203,7 +189,7 @@ async fn discovery(url: &str) {
 }
 
 async fn create_topic(topic_name: &str) {
-    let url = "coap://".to_owned()+global_url+"/ps"; 
+    let url = "coap://".to_owned()+GLOBAL_URL+"/ps"; 
     let resource_type="core.ps.conf";
     let payload = json!({"topic-name": topic_name, "resource-type": resource_type}).to_string();
     let payload_bytes = payload.into_bytes();

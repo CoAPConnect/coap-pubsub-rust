@@ -24,14 +24,16 @@ lazy_static! {
 async fn main() {
     handle_command().await;
 }
+static global_url: &str = "127.0.0.1:5684";
 
 async fn handle_command() {
-    let discovery_url = "coap://127.0.0.1:5683/discovery";
+    let discovery_url = "coap://".to_owned()+global_url+"/discovery";
 
     loop {
         println!("Enter command number:");
         println!("1. discovery");
         println!("2. subscribe <TopicName>");
+        println!("3. create topic <TopicName");
         println!("5. update topic configuration: PUT <TopicName> <Payload>");
         println!("6. delete topic configuration: DELETE <TopicName>");
 
@@ -43,10 +45,13 @@ async fn handle_command() {
 
         match args.as_slice() {
             ["1"] | ["topic discovery"] => {
-                discovery(discovery_url).await;
+                discovery(&discovery_url).await;
             },
             ["2", topic_name] | ["subscribe", topic_name] => {
                 subscribe(topic_name).await;
+            },
+            ["3", topic_name] | ["create topic", topic_name]=>{
+                create_topic(topic_name).await;
             },
             ["5", topic_name, payload] | ["PUT", topic_name, payload] => {
                 update_topic(topic_name, payload).await;
@@ -78,7 +83,7 @@ fn server_error(e: &IoError) {
 
 
 async fn delete_topic(topic_name: &str) -> Result<(), Box<dyn Error>> {
-    let url = format!("coap://127.0.0.1:5683/{}", topic_name);
+    let url = format!("{}/{}", "coap://".to_owned()+global_url,topic_name);
     println!("Client request: {}", url);
 
     match UdpCoAPClient::delete(&url).await {
@@ -92,7 +97,7 @@ async fn delete_topic(topic_name: &str) -> Result<(), Box<dyn Error>> {
         }
     }
 }
-
+/** 
 async fn listen_for_messages(socket: Arc<UdpSocket>) {
     let mut buf = [0u8; 1024];
     loop {
@@ -109,9 +114,9 @@ async fn listen_for_messages(socket: Arc<UdpSocket>) {
         }
     }
 }
-
+*/
 async fn update_topic(topic_name: &str, payload: &str) -> Result<(), Box<dyn Error>> {
-    let url = format!("coap://127.0.0.1:5683/{}/data", topic_name);
+    let url = format!("{}/{}/data",global_url, topic_name);
     let data = payload.as_bytes().to_vec();
     println!("Client request: {}", url);
 
@@ -142,11 +147,11 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
 
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
     request.set_method(Method::Get);
-    request.set_path(&format!("/subscribe/{}", topic_name));
+    request.set_path(&format!("/{}/subscribe", topic_name));
     request.message.set_observe_value(0);
 
     let packet = request.message.to_bytes().unwrap();
-    listen_socket.send_to(&packet[..], "127.0.0.1:5683").await.expect("Could not send the data");
+    listen_socket.send_to(&packet[..], &global_url).await.expect("Could not send the data");
 
     let handle = tokio::spawn(async move {
         listen_for_messages(listen_socket).await;
@@ -200,7 +205,7 @@ async fn discovery(url: &str) {
 }
 
 async fn create_topic(topic_name: &str) {
-    let url = "coap://127.0.0.1:5683/ps"; 
+    let url = "coap://".to_owned()+global_url+"/ps"; 
     let resource_type="core.ps.conf";
     let payload = json!({"topic-name": topic_name, "resource-type": resource_type}).to_string();
     let payload_bytes = payload.into_bytes();

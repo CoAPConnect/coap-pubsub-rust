@@ -4,15 +4,15 @@ use coap_lite::{
     CoapOption, CoapRequest, CoapResponse, Packet, RequestType as Method
 };
 use std::io::{self, Write};
-use std::io::ErrorKind;
+use std::error::Error;
+use std::io::{ErrorKind, Error as IoError};
 use std::net::SocketAddr;
 use tokio;
 use tokio::net::UdpSocket;
-use std::error::Error;
 use tokio::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
-
+use std::convert::Into;
 use lazy_static::lazy_static;
 use serde_json::json;
 
@@ -24,15 +24,18 @@ lazy_static! {
 async fn main() {
     handle_command().await;
 }
+static GLOBAL_URL: &str = "127.0.0.1:5683";
 
 async fn handle_command() {
-    let discovery_url = "coap://127.0.0.1:5683/discovery";
+    let discovery_url = "coap://".to_owned()+GLOBAL_URL+"/discovery";
 
     loop {
         println!("Enter command number:");
-        println!("1. discovery");
+        println!("1. topic discovery");
         println!("2. subscribe <TopicName>");
-        println!("5. create topic <TopicName>");
+        println!("3. create topic <TopicName>");
+        println!("5. update topic data: PUT <TopicURI> <Payload>");
+        println!("6. delete topic configuration: DELETE <TopicURI>");
 
         io::stdout().flush().unwrap();
 
@@ -42,15 +45,72 @@ async fn handle_command() {
 
         match args.as_slice() {
             ["1"] | ["topic discovery"] => {
-                discovery(discovery_url).await;
+                discovery(&discovery_url).await;
             },
             ["2", topic_name] | ["subscribe", topic_name] => {
                 subscribe(topic_name).await;
             },
-            ["5", topic_name] | ["create topic", topic_name] => { 
-                create_topic(topic_name).await; 
+            ["3", topic_name] | ["create topic", topic_name]=>{
+                create_topic(topic_name).await;
+            },
+            ["5", topic_name, payload] | ["PUT", topic_name, payload] => {
+                update_topic(topic_name, payload).await;
+            },
+            ["6", topic_name] | ["DELETE", topic_name] => {
+                delete_topic(topic_name).await;
             },
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
+        }
+    }
+}
+
+/// Function that handles formatting the server reply in the case a response comes through. Prints the response code and the payload.
+fn server_reply(response: CoapResponse){
+    let code = response.message.header.code;
+            println!(
+                "Server reply: {} {}",
+                code.to_string(),
+                String::from_utf8(response.message.payload).unwrap()
+            );
+}
+fn server_error(e: &IoError) {
+    match e.kind() {
+        ErrorKind::WouldBlock => println!("Request timeout"), // Unix
+        ErrorKind::TimedOut => println!("Request timeout"),   // Windows
+        _ => println!("Request error: {:?}", e),
+    }
+}
+
+
+async fn delete_topic(topic_name: &str) -> Result<(), Box<dyn Error>> {
+    let url = format!("{}/{}", "coap://".to_owned()+GLOBAL_URL,topic_name);
+    println!("Client request: {}", url);
+
+    match UdpCoAPClient::delete(&url).await {
+        Ok(response) => {
+            server_reply(response);
+            Ok(())
+        }
+        Err(e) => {
+            server_error(&e);
+            Err(Box::new(e))
+        }
+    }
+}
+
+async fn update_topic(topic_name: &str, payload: &str) -> Result<(), Box<dyn Error>> {
+    let url = format!("{}/{}/data","coap://".to_owned()+GLOBAL_URL, topic_name);
+    let data = payload.as_bytes().to_vec();
+    println!("Client request: {}", url);
+
+    match UdpCoAPClient::put(&url, data).await {
+        Ok(response) => {
+            server_reply(response);
+            Ok(())
+        }
+        Err(e) => {
+            server_error(&e);
+            Err(Box::new(e))
         }
     }
 }
@@ -66,22 +126,23 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
         ls.as_ref().unwrap().clone()
     };
 
-    let local_addr = listen_socket.local_addr()?;
+    //let local_addr = listen_socket.local_addr()?;
 
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
     request.set_method(Method::Get);
-    request.set_path(&format!("/subscribe/{}", topic_name));
+    request.set_path(&format!("/{}/subscribe", topic_name));
     request.message.set_observe_value(0);
 
     let packet = request.message.to_bytes().unwrap();
-    listen_socket.send_to(&packet[..], "127.0.0.1:5683").await.expect("Could not send the data");
+    listen_socket.send_to(&packet[..], &GLOBAL_URL).await.expect("Could not send the data");
 
-    let handle = tokio::spawn(async move {
+    let _handle = tokio::spawn(async move {
         listen_for_messages(listen_socket).await;
     });
 
     return Ok(());
 }
+
 
 /// Listen for responses and future publifications on followed topics
 /// In the future should check that the response has observe value to see subscription was ok
@@ -128,7 +189,7 @@ async fn discovery(url: &str) {
 }
 
 async fn create_topic(topic_name: &str) {
-    let url = "coap://127.0.0.1:5683/ps"; 
+    let url = "coap://".to_owned()+GLOBAL_URL+"/ps"; 
     let resource_type="core.ps.conf";
     let payload = json!({"topic-name": topic_name, "resource-type": resource_type}).to_string();
     let payload_bytes = payload.into_bytes();

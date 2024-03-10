@@ -1,5 +1,5 @@
 use coap::server::{Listener, UdpCoapListener};
-use coap_lite::{CoapOption, CoapRequest, RequestType as Method};
+use coap_lite::{CoapOption, CoapRequest, ResponseType, RequestType as Method};
 use coap::Server;
 use resource::DataResource;
 use tokio::runtime::Runtime;
@@ -24,18 +24,28 @@ lazy_static! {
     static ref TOPIC_COLLECTION_MUTEX: Mutex<Arc<TopicCollection>> = Mutex::new(Arc::new(TopicCollection::new("TopicCollection".to_string())));
 }
 
+/// Notifies client of status of request
+fn notify_client(response_type: coap_lite::ResponseType, message: &mut coap_lite::CoapResponse, payload: &str){
+    message.message.payload = payload.as_bytes().to_vec();
+    message.set_status(response_type);
+}
+
+/// Handles broker discovery of core.ps, currently returns ip address of broker
 fn handle_broker_discovery(req: &mut CoapRequest<SocketAddr>){
     println!("Handling broker discovery");
 
     let response = req.response.as_mut().unwrap();
+    /* Actual message should be sen using linkformat
     response.message.add_option(CoapOption::ContentFormat, (b"127.0.0.1:5683").to_vec());
+    */
 
-    // actual data is sent in the contentformat option, this line is for testing purposes
+    // this line is for testing purposes
     response.message.payload = (b"127.0.0.1:5683").to_vec()
 }
 
+/// Topic name discovery - not an actual coap pubsub draft method
 fn handle_discovery(req: &mut CoapRequest<SocketAddr>) {
-    println!("Handling topic discovery");
+    println!("Handling topic name discovery");
 
     // Lock the mutex to access the topic_collection
     let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
@@ -43,7 +53,7 @@ fn handle_discovery(req: &mut CoapRequest<SocketAddr>) {
     let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
 
     let topics = topic_collection_ref.get_topics();
-    let topic_list: Vec<String> = topics.iter().map(|topic| topic.get_topic_name().to_owned()).collect();
+    let topic_list: Vec<String> = topics.values().map(|topic| topic.get_topic_name().to_owned()).collect();
 
     let payload = json!({"topics": topic_list}).to_string();
     let payload_clone = payload.clone();
@@ -51,9 +61,10 @@ fn handle_discovery(req: &mut CoapRequest<SocketAddr>) {
     if let Some(ref mut message) = req.response { 
         message.message.payload = payload.into_bytes();
     }
-    println!("Topic discovery response sent with payload: {}", payload_clone);
+    println!("Topic name discovery response sent with payload: {}", payload_clone);
 }
 
+/// Handles subscription to a topic
 fn handle_subscribe(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_addr: SocketAddr) {
     println!("Beginning subscription handling");
     
@@ -62,22 +73,23 @@ fn handle_subscribe(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_a
 
     
     // Check if the topic exists
-    if let Some(topic) = topic_collection_ref.find_topic_by_name(topic_name) {
+    if let Some(topic) = topic_collection_ref.find_topic_by_name_mut(topic_name) {
         // Topic exists, add subscriber
-        let data_path = topic.get_topic_data();
-        let data = topic_collection_ref.get_data_from_path_mut(data_path.to_string());
-        data.add_subscriber(local_addr);
+        topic.get_data_resource().add_subscriber(local_addr.clone());
+        let data = topic.get_data_resource();
+        //let data = topic_collection_ref.get_data_from_path_mut(data_path.to_string());
+        //data.add_subscriber(local_addr);
 
         println!("Current subscribers for {}: {:?}",topic_name.to_string(), data.get_subscribers());
 
         // Prepare a success response
         if let Some(ref mut message) = req.response {
             // payload message just for testing purposes
-            message.message.payload = format!("Subscribed to {}", topic_name).into_bytes();
+            message.message.payload = b"Subscribed successfully".to_vec();
+            println!("{} subscribed to {}", local_addr.clone().to_string(), topic_name);
             message.message.set_content_format(coap_lite::ContentFormat::try_from(110).unwrap());
             message.message.set_observe_value(10001);
         }
-        println!("{} subscribed to {}", local_addr.to_string(), topic_name);
     } else {
         // Topic does not exist, prepare an error response
         if let Some(ref mut message) = req.response {
@@ -86,7 +98,6 @@ fn handle_subscribe(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_a
         }
     }
 }
-
 
 fn handle_invalid_path(req: &CoapRequest<SocketAddr>) {
     // Handle unrecognized paths
@@ -111,7 +122,7 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         [".well-known", "core"] | [".well-known", "core?rt=core.ps"] => {
             handle_broker_discovery(req);
         },
-        ["subscribe", topic] => {
+        [topic, "subscribe"] => {
             handle_subscribe(req, topic, req.source.unwrap());
         },
         _ => {
@@ -121,6 +132,7 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
     }
 }
 
+/// Handling put requests done to the broker
 async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
     let path_str = req.get_path();
     let components: Vec<&str> = path_str.split('/').filter(|s| !s.is_empty()).collect();
@@ -141,40 +153,10 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
     }
 
     update_topic_data(req, topic_name).await;
-
-// Notify all subscribers of the update
-let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
-let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
-let topic = topic_collection_ref.find_topic_by_name(topic_name).unwrap();
-let topic_data_path = topic.get_topic_data().to_string().clone();
-
-for subscriber in topic_collection_ref.get_data_from_path(topic_data_path).get_subscribers() {
-    let path = topic.get_topic_data().to_string().clone();
-    let resource_clone = topic_collection_ref.get_data_from_path(path.clone()).get_data().clone();
-    
-    // Clone the necessary data and move it into the async block
-    let subscriber_clone = subscriber.clone();
-    let resource_clone = resource_clone.clone();
-    tokio::spawn(async move {
-        if let Err(e) = inform_subscriber(subscriber_clone, &resource_clone).await {
-            eprintln!("Failed to notify subscriber {}: {}", subscriber_clone, e);
-        }
-    });
 }
 
-if let Some(ref mut message) = req.response {
-    message.message.payload = b"Resource updated successfully".to_vec();
-    println!("{} was updated", topic_name);
-} else {
-    // Topic not found
-    if let Some(ref mut message) = req.response {
-        message.message.payload = b"Topic not found".to_vec();
-    }
-}
-
-}
-
-async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_name: &str) {
+/// Updates data resource associated with a topic
+async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_uri: &str) {
     let payload = match String::from_utf8(req.message.payload.clone()) {
         Ok(content) => content,
         Err(_) => {
@@ -189,17 +171,54 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_name: &str) 
     // Obtain a mutable reference to the TopicCollection inside the Arc
     if let Some(topic_collection_ref) = Arc::get_mut(&mut locked_topic_collection) {
         // Attempt to find the topic by name
-        if let Some(topic) = topic_collection_ref.find_topic_by_name_mut(topic_name) {
+        if let Some(topic) = topic_collection_ref.find_topic_by_uri_mut(topic_uri) {
             // Action is "data", update the topic's resource
-            topic.set_topic_data(payload.clone());
+            topic.get_data_resource().set_data(payload.to_string());
+        }
+        else{
+            println!("SETTING TOPIC DATA FAILED");
+            return;
         }
     }
+    // Notify all subscribers of the update
+    //let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+    let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
+
+    
+    let topic = topic_collection_ref.find_topic_by_uri(topic_uri).unwrap();
+    //let topic_data_path = topic.get_topic_data().to_string().clone();
+    //println!("{}",topic_data_path);
+    for subscriber in topic.get_dr().get_subscribers() {
+        //let path = topic.get_topic_data().to_string().clone();
+        //let resource_clone = topic_collection_ref.get_data_from_path(path.clone()).get_data().clone();
+        let path = "data/".to_owned()+topic.get_dr().get_data();
+        // Clone the necessary data and move it into the async block
+        let subscriber_clone = subscriber.clone();
+        println!("{}",subscriber_clone);
+        //let resource_clone = resource_clone.clone();
+        tokio::spawn(async move {
+            if let Err(e) = inform_subscriber(subscriber_clone, &path).await {
+                eprintln!("Failed to notify subscriber {}: {}", subscriber_clone, e);
+            }
+        });
+    }
+
+    if let Some(ref mut message) = req.response {
+        message.message.payload = b"Resource updated successfully".to_vec();
+        println!("{} was updated with data: {}", topic_uri, payload.clone());
+    } else {
+        // Topic not found
+        if let Some(ref mut message) = req.response {
+            message.message.payload = b"Topic not found".to_vec();
+        }
+    }
+    
 }
 
+//TODO, currently not working nor following draft
 async fn inform_subscriber(addr: SocketAddr, resource: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Serialize your resource as JSON, or use it directly if it's already a JSON string
     let payload = resource.as_bytes();
-
     // Placeholder for asynchronous network call
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.send_to(&payload, &addr)?;
@@ -210,10 +229,11 @@ async fn inform_subscriber(addr: SocketAddr, resource: &str) -> Result<(), Box<d
 /// Creates a new topic
 fn create_topic(topic_name: &String, resource_type: &String, req: &mut coap_lite::CoapRequest<SocketAddr>) {
     let topic = Topic::new(topic_name.clone(), resource_type.clone());
-    let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+    let topic_uri = topic.get_topic_uri();
+    let mut locked_topic_collection: std::sync::MutexGuard<'_, Arc<TopicCollection>> = TOPIC_COLLECTION_MUTEX.lock().unwrap();
     let mut topic_collection_ref = Arc::get_mut(&mut locked_topic_collection);
     topic_collection_ref.as_mut().unwrap().add_topic(topic);
-    println!("Topic '{}' of type '{}' added to the topic map.", topic_name, resource_type);
+    println!("Topic '{}' with uri: {}, and of type '{}' added to the topic map.", topic_name, topic_uri, resource_type);
 
     if let Some(ref mut message) = req.response {
         message.message.payload = b"Topic created succesfully".to_vec();
@@ -236,17 +256,35 @@ fn handle_post(req:&mut Box<CoapRequest<SocketAddr>>){
     create_topic(topic_name, resource_type, req);
 }
 
+/// Handles requests with method DELETE. 
 async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
     let path = req.get_path(); // Extract the URI path from the request
     let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
 
     match components.as_slice() {
-        // Add resource deletion command here
+        [topic_name] => {
+            delete_topic(req, topic_name, req.source.unwrap());
+        },
         _ => {
             // Handle invalid or unrecognized paths
             handle_invalid_path(req);
         },
     }
+}
+/// This function deletes a topic configuration as specified here: https://datatracker.ietf.org/doc/html/draft-ietf-core-coap-pubsub-13#name-deleting-a-topic-configurat
+// TO DO: all subscribers MUST be unsubscribed after this
+fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_uri: &str, local_addr: SocketAddr) {
+    println!("Deleting topic: {}", topic_uri);
+    let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap(); // Lock the topic map for safe access
+    let mut topic_collection_ref = Arc::get_mut(&mut locked_topic_collection);
+    
+    topic_collection_ref.as_mut().unwrap().remove_topic(topic_uri);
+        // Topic found and removed
+        if let Some(ref mut message) = req.response {
+            notify_client(coap_lite::ResponseType::Deleted, message, "Topic deleted succesfully");
+            println!("{} deleted {}", local_addr.to_string(), topic_uri);
+        }
+
 }
 
 fn handle_resource_deletion_or_invalid_path(req: &mut CoapRequest<SocketAddr>, components: &[&str]) {
@@ -276,37 +314,34 @@ fn initialize_topics() {
     let data_path3 = "data/789".to_string();
 
     let mut topic1 = Topic::new("topic1".to_string(), "core.ps.conf".to_string());
+    topic1.get_data_resource().set_data("123".to_string());
     topic1.set_topic_uri("123".to_string());
     topic1.set_topic_data(data_path1.clone());
     let mut topic2 = Topic::new("topic2".to_string(), "core.ps.conf".to_string());
-    topic1.set_topic_uri("456".to_string());
-    topic2.set_topic_data("data/456".to_string());
+    topic2.set_topic_uri("456".to_string());
+    topic2.set_topic_data(data_path2.clone());
     let mut topic3 = Topic::new("topic3".to_string(), "core.ps.conf".to_string());
-    topic1.set_topic_uri("456".to_string());
-    topic3.set_topic_data("data/789".to_string());
+    topic3.set_topic_uri("789".to_string());
+    topic3.set_topic_data(data_path3.clone());
 
+    let mut data1 = DataResource::new(data_path1.clone(), "123".to_string());
+    data1.set_data(data_path1.clone());
+    //topic_collection.set_data(data_path1, data1);
+
+    let mut data2 = DataResource::new(data_path2.clone(), "456".to_string());
+    data2.set_data(example_data.to_string());
+    //topic_collection.set_data(data_path2.clone(), data2);
+
+    let mut data3 = DataResource::new(data_path3.clone(), "789".to_string());
+    data3.set_data(example_data.to_string());
+    //topic_collection.set_data(data_path3.clone(), data3);
 
     topic_collection.add_topic(topic1);
     topic_collection.add_topic(topic2);
     topic_collection.add_topic(topic3);
-    // Add as many topics / with specific settings as needed for testing
-
-    let mut data1 = DataResource::new(data_path1.clone(), "123".to_string());
-    data1.set_data(data_path1.clone());
-    topic_collection.set_data(data_path1, data1);
-
-    let mut data2 = DataResource::new(data_path2.clone(), "456".to_string());
-    data2.set_data(example_data.to_string());
-    topic_collection.set_data(data_path2.clone(), data2);
-
-    let mut data3 = DataResource::new(data_path3.clone(), "789".to_string());
-    data3.set_data(example_data.to_string());
-    topic_collection.set_data(data_path3.clone(), data3);
 }
-
 fn main() {
     initialize_topics();
-
     let addr = "127.0.0.1:5683";
     Runtime::new().unwrap().block_on(async move {
         let socket_local = tokio::net::UdpSocket::bind(addr).await.unwrap();

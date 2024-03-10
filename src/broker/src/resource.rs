@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::collections::HashMap;
+use rand::Rng;
 ///Topic resource as struct and its implemented methods.
 ///
 ///Fields are based on IETF draft <https://www.ietf.org/archive/id/draft-ietf-core-coap-pubsub-13.html>
@@ -15,7 +16,7 @@ pub struct Topic {
     pub resource_type: String,
     /// The URI of the topic.
     pub topic_uri: String,
-    /// The data associated with the topic.
+    /// The URI associated with the topic data
     pub topic_data: String,
     /// The media type of the topic data.
     pub media_type: String,
@@ -27,6 +28,8 @@ pub struct Topic {
     pub max_subscribers: u32,
     /// The amount of time in seconds between each observer check, removing uninterested observers
     pub observe_check: u32,
+    /// KAVAN TEST data resource as part of topic
+    pub data_resource: DataResource,
 }
 
 ///Topic implementation.
@@ -39,15 +42,29 @@ impl Topic {
         Topic {
             topic_name,
             resource_type,
-            topic_uri: String::new(),
+            topic_uri: Self::generate_uri(),
             topic_data: String::new(),
             media_type: String::new(),
             topic_type: String::new(),
             expiration_date: String::new(),
             max_subscribers: u32::MAX,
             observe_check: 86400,
+            data_resource: DataResource::new("def".to_string(),"def".to_string()),
         }
     }
+
+
+    pub fn set_data_resource(&mut self, dr: DataResource){
+        self.data_resource=dr;
+    }
+    pub fn get_data_resource(&mut self) -> &mut DataResource{
+        &mut self.data_resource
+    }
+    pub fn get_dr (&self) -> &DataResource{
+        &self.data_resource
+    }
+
+
     ///Set the URI of the topic.
     pub fn set_topic_uri(&mut self, topic_uri: String) {
         self.topic_uri = topic_uri;
@@ -92,9 +109,9 @@ impl Topic {
     pub fn get_resource_type(&self) -> &str {
         &self.resource_type
     }
-    ///Get the URI of the topic.
-    pub fn get_topic_uri(&self) -> &str {
-        &self.topic_uri
+    /// Get the URI of the topic.
+    pub fn get_topic_uri(&self) -> String {
+        self.topic_uri.clone()
     }
     ///Get the data of the topic.
     pub fn get_topic_data(&self) -> &str {
@@ -120,6 +137,25 @@ impl Topic {
     pub fn get_observe_check(&self) -> u32 {
         self.observe_check
     }
+    ///Generate random len 6 String consisting of numbers and/or letters as the uri. 2,2 billion possibilities
+    ///Currently doesn't check for possible same uris!! TODO
+    fn generate_uri() -> String {
+        let mut rng = rand::thread_rng();
+
+        let random_string: String = (0..6)
+            .map(|_| {
+                let choice = rng.gen_range(0..36);
+                if choice < 10 {
+                    // Generate a digit
+                    (choice + b'0') as char
+                } else {
+                    // Generate a letter
+                    (choice - 10 + b'a') as char
+                }
+            })
+            .collect();
+        random_string
+    }
 }
 ///Topic collection as struct
 pub struct TopicCollection {
@@ -127,8 +163,8 @@ pub struct TopicCollection {
     name: String,
     /// The type of the resource associated with the topic collection "core.ps.coll".
     resource_type: String,
-    /// The topics in the topic collection.
-    topics: Vec<Topic>,
+    /// The topics in the topic collection. Key: uri of the topic, Value: the topic assosiated with uri
+    topics: HashMap<String, Topic>,
     /// Data for the topics with path/name String as key and value as String(json format)
     data: HashMap<String, DataResource>,
 }
@@ -139,7 +175,7 @@ impl TopicCollection {
         TopicCollection {
             name,
             resource_type: String::from("core.ps.coll"),
-            topics: Vec::new(),
+            topics: HashMap::new(),
             data: HashMap::new(),
         }
     }
@@ -157,12 +193,16 @@ impl TopicCollection {
     }
 
     /// Returns the topics in the topic collection.
-    pub fn get_topics(&self) -> &Vec<Topic> {
+    pub fn get_topics(&self) -> &HashMap<String, Topic> {
         &self.topics
     }
 
     /// Returns reference to dataresource from path
     pub fn get_data_from_path(&self, path: String) -> &DataResource {
+        println!("{}",path);
+        for (key, value) in &self.data{
+            println!("{}", key);
+        }
         self.data.get(&path).clone().unwrap()
     }
 
@@ -187,7 +227,7 @@ impl TopicCollection {
     }
 
     /// Sets the topics in the topic collection.
-    pub fn set_topics(&mut self, topics: Vec<Topic>) {
+    pub fn set_topics(&mut self, topics: HashMap<String, Topic>) {
         self.topics = topics;
     }
 
@@ -201,27 +241,32 @@ impl TopicCollection {
 
     /// Adds a topic to the topic collection.
     pub fn add_topic(&mut self, topic: Topic) {
-        self.topics.push(topic);
+        self.topics.insert(topic.get_topic_uri().to_string(), topic);
     }
 
     /// Removes a topic from the topic collection by its name.
-    pub fn remove_topic(&mut self, topic_name: &str) {
-        self.topics.retain(|topic| topic.topic_name != topic_name);
+    pub fn remove_topic(&mut self, topic_uri: &str) {
+        self.topics.remove(topic_uri);
     }
 
     /// Finds a topic in the topic collection by its URI.
     pub fn find_topic_by_uri(&self, topic_uri: &str) -> Option<&Topic> {
-        self.topics.iter().find(|topic| topic.get_topic_uri() == topic_uri)
+        self.topics.get(topic_uri)
+    }
+
+    /// Finds a topic in the topic collection by its URI and returns it as mutable
+    pub fn find_topic_by_uri_mut(&mut self, topic_uri: &str) -> Option<&mut Topic> {
+        self.topics.get_mut(topic_uri)
     }
 
     /// Finds a topic in the topic collection by its name.
     pub fn find_topic_by_name(&self, topic_name: &str) -> Option<&Topic> {
-        self.topics.iter().find(|topic| topic.get_topic_name() == topic_name)
+        self.topics.values().find(|topic| topic.get_topic_name() == topic_name)
     }
 
     /// Finds a topic in the topic collection by its name and returns a mutable topic.
     pub fn find_topic_by_name_mut(&mut self, topic_name: &str) -> Option<&mut Topic> {
-        self.topics.iter_mut().find(|topic| topic.get_topic_name() == topic_name)
+        self.topics.values_mut().find(|topic| topic.get_topic_name() == topic_name)
     }
 
     /// Changes current data in selected path, aka publishing new data if dataresource exists

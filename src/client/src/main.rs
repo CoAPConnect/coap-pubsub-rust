@@ -49,10 +49,10 @@ async fn handle_command() {
                 discovery(&discovery_url).await;
             },
             ["2", topic_name] | ["subscribe", topic_name] => {
-                subscribe(topic_name, 0).await;
+                subscription(topic_name, 0).await;
             },
             ["3", topic_name] | ["unsubscribe", topic_name] => {
-                subscribe(topic_name, 1).await;
+                subscription(topic_name, 1).await;
             },
             ["4", topic_name] | ["create topic", topic_name]=>{
                 create_topic(topic_name).await;
@@ -119,7 +119,7 @@ async fn update_topic(topic_name: &str, payload: &str) -> Result<(), Box<dyn Err
     }
 }
 
-async fn subscribe(topic_name: &str, subscribe: u32) -> Result<(), Box<dyn Error>> {
+async fn subscription(topic_name: &str, observe_value: u32) -> Result<(), Box<dyn Error>> {
 
     let listen_socket = {
         let mut ls = LISTENER_SOCKET.lock().unwrap();
@@ -135,15 +135,14 @@ async fn subscribe(topic_name: &str, subscribe: u32) -> Result<(), Box<dyn Error
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
     request.set_method(Method::Get);
 
-    // Set the path to subscribe or unsubscribe based on the `subscribe` parameter
-    let path = match subscribe {
+    // Set the path to subscribe or unsubscribe based on the `observe_value` parameter
+    let path = match observe_value {
         0 => format!("/{}/subscribe", topic_name),
-        1 => format!("/{}/unsubscribe", topic_name),
-        _ => panic!("Invalid subscribe value"), // Handle unexpected values gracefully
+        _ => format!("/{}/unsubscribe", topic_name),
     };
 
     request.set_path(&path);
-    request.message.set_observe_value(subscribe);
+    request.message.set_observe_value(observe_value);
 
     let packet = request.message.to_bytes().unwrap();
     listen_socket.send_to(&packet[..], &GLOBAL_URL).await.expect("Could not send the data");

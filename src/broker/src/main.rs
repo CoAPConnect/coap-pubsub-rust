@@ -23,6 +23,10 @@ use lazy_static::lazy_static;
 lazy_static! {
     static ref TOPIC_COLLECTION_MUTEX: Mutex<Arc<TopicCollection>> = Mutex::new(Arc::new(TopicCollection::new("TopicCollection".to_string())));
 }
+enum SubscriptionAction {
+    Subscribe,
+    Unsubscribe,
+}
 
 /// Notifies client of status of request
 fn notify_client(response_type: coap_lite::ResponseType, message: &mut coap_lite::CoapResponse, payload: &str){
@@ -64,33 +68,55 @@ fn handle_discovery(req: &mut CoapRequest<SocketAddr>) {
     println!("Topic name discovery response sent with payload: {}", payload_clone);
 }
 
-/// Handles subscription to a topic
-fn handle_subscribe(req: &mut CoapRequest<SocketAddr>, topic_name: &str, local_addr: SocketAddr) {
+/// Handles subscription and unsubscription to a topic
+fn handle_subscription(req: &mut CoapRequest<SocketAddr>, topic_name: &str, subscriber_addr: SocketAddr, action: SubscriptionAction) {
     println!("Beginning subscription handling");
-    
-    let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
-    let topic_collection_ref = Arc::get_mut(&mut locked_topic_collection).unwrap();
 
-    
+    let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+    let topic_collection_ref = Arc::get_mut(&mut locked_topic_collection).unwrap(); // Lock the topic map for safe access
+
     // Check if the topic exists
     if let Some(topic) = topic_collection_ref.find_topic_by_name_mut(topic_name) {
-        // Topic exists, add subscriber
-        topic.get_data_resource().add_subscriber(local_addr.clone());
         let data = topic.get_data_resource();
-        //let data = topic_collection_ref.get_data_from_path_mut(data_path.to_string());
-        //data.add_subscriber(local_addr);
 
-        println!("Current subscribers for {}: {:?}",topic_name.to_string(), data.get_subscribers());
+        match action {
+            SubscriptionAction::Subscribe => {
+                // Topic exists, add subscriber
+                data.add_subscriber(subscriber_addr.clone());
+                println!("Current subscribers for {}: {:?}",topic_name.to_string(), data.get_subscribers());
+                println!("{} subscribed to {}", subscriber_addr.clone().to_string(), topic_name);
 
-        // Prepare a success response
-        if let Some(ref mut message) = req.response {
-            // payload message just for testing purposes
-            message.message.payload = b"Subscribed successfully".to_vec();
-            println!("{} subscribed to {}", local_addr.clone().to_string(), topic_name);
-            message.message.set_content_format(coap_lite::ContentFormat::try_from(110).unwrap());
-            message.message.set_observe_value(10001);
+                // Prepare a success response
+                if let Some(ref mut message) = req.response {
+                    // payload message just for testing purposes
+                    message.message.payload = b"Subscribed successfully".to_vec();
+                    message.message.set_content_format(coap_lite::ContentFormat::try_from(110).unwrap());
+                    message.message.set_observe_value(10001);
+                }
+            }
+            SubscriptionAction::Unsubscribe => {
+                // Topic exists, attempt to remove subscriber
+                if data.get_subscribers().contains(&subscriber_addr) {
+                    // Subscriber found, remove it
+                    data.remove_subscriber(subscriber_addr.clone());
+                    println!("{} unsubscribed from {}", subscriber_addr.clone(), topic_name);
+
+                    // Prepare a success response
+                    if let Some(ref mut message) = req.response {
+                        message.message.payload = b"Unsubscribed successfully".to_vec();
+                        message.message.set_observe_value(1);
+                    }
+                } 
+                else {
+                    // Subscriber not found, prepare an error response
+                    if let Some(ref mut message) = req.response {
+                        message.message.payload = b"Subscriber not found".to_vec();
+                    }
+                }
+            }
         }
-    } else {
+    } 
+    else {
         // Topic does not exist, prepare an error response
         if let Some(ref mut message) = req.response {
             message.message.payload = b"Topic not found".to_vec();
@@ -123,7 +149,10 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
             handle_broker_discovery(req);
         },
         [topic, "subscribe"] => {
-            handle_subscribe(req, topic, req.source.unwrap());
+            handle_subscription(req, topic, req.source.unwrap(),SubscriptionAction::Subscribe);
+        },
+        [topic, "unsubscribe"] => {
+            handle_subscription(req, topic, req.source.unwrap(),SubscriptionAction::Unsubscribe);
         },
         _ => {
             // Handle invalid or unrecognized paths

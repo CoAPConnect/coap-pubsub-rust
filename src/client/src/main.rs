@@ -33,7 +33,8 @@ async fn handle_command() {
         println!("Enter command number:");
         println!("1. topic discovery");
         println!("2. subscribe <TopicName>");
-        println!("3. create topic <TopicName>");
+        println!("3. unsubscribe <TopicName>");
+        println!("4. create topic <TopicName>");
         println!("5. update topic data: PUT <TopicURI> <Payload>");
         println!("6. delete topic configuration: DELETE <TopicURI>");
 
@@ -48,9 +49,12 @@ async fn handle_command() {
                 discovery(&discovery_url).await;
             },
             ["2", topic_name] | ["subscribe", topic_name] => {
-                subscribe(topic_name).await;
+                subscribe(topic_name, 0).await;
             },
-            ["3", topic_name] | ["create topic", topic_name]=>{
+            ["3", topic_name] | ["unsubscribe", topic_name] => {
+                subscribe(topic_name, 1).await;
+            },
+            ["4", topic_name] | ["create topic", topic_name]=>{
                 create_topic(topic_name).await;
             },
             ["5", topic_name, payload] | ["PUT", topic_name, payload] => {
@@ -115,7 +119,7 @@ async fn update_topic(topic_name: &str, payload: &str) -> Result<(), Box<dyn Err
     }
 }
 
-async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
+async fn subscribe(topic_name: &str, subscribe: u32) -> Result<(), Box<dyn Error>> {
 
     let listen_socket = {
         let mut ls = LISTENER_SOCKET.lock().unwrap();
@@ -130,8 +134,16 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
 
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
     request.set_method(Method::Get);
-    request.set_path(&format!("/{}/subscribe", topic_name));
-    request.message.set_observe_value(0);
+
+    // Set the path to subscribe or unsubscribe based on the `subscribe` parameter
+    let path = match subscribe {
+        0 => format!("/{}/subscribe", topic_name),
+        1 => format!("/{}/unsubscribe", topic_name),
+        _ => panic!("Invalid subscribe value"), // Handle unexpected values gracefully
+    };
+
+    request.set_path(&path);
+    request.message.set_observe_value(subscribe);
 
     let packet = request.message.to_bytes().unwrap();
     listen_socket.send_to(&packet[..], &GLOBAL_URL).await.expect("Could not send the data");

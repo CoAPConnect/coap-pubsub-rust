@@ -352,7 +352,7 @@ fn initialize_topics() {
     topic_collection.add_topic(topic3);
 }
 
-/// server startup and handling requests is implemented in main
+/// server startup and handling requests is implemented in main 
 fn main() {
     initialize_topics();
     let addr = "127.0.0.1:5683";
@@ -360,13 +360,13 @@ fn main() {
         // create socket2 socket and assign a random address to it, then join multicast group with it
         // and attempt to make these nonblocking and reusable
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(socket2::Protocol::UDP)).unwrap();
+        socket.set_nonblocking(true).unwrap();
+        socket.set_reuse_address(true).unwrap();
         let addr2 = "0.0.0.0:5683".parse::<std::net::SocketAddr>().unwrap();
         socket.bind(&addr2.into()).unwrap();
         // multicast address for ipv4 coap is 224.0.1.187:5683
         let multiaddr = Ipv4Addr::new(224, 0, 1, 187);
         socket.join_multicast_v4(&multiaddr, &Ipv4Addr::UNSPECIFIED).unwrap();
-        socket.set_nonblocking(true).unwrap();
-        socket.set_reuse_address(true).unwrap();
 
         // create std socket from socket2 socket and then tokio socket from std socket
         let sock = UdpSocket::from(socket);

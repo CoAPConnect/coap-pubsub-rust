@@ -135,7 +135,7 @@ async fn multicast_broker_discovery(){
     }
 }
 
-/// Multicast discovery using known broker address
+/// Broker discovery using known broker address
 async fn broker_discovery(){
     println!("Broker discovery start");
     let addr = GLOBAL_URL;
@@ -162,7 +162,7 @@ async fn broker_discovery(){
     }
 }
 
-/// Multicast discovery using known broker address
+/// Broker discovery using known broker address and uri query to define resource-type
 async fn broker_discovery_uri_query(){
     let addr = GLOBAL_URL;
     let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();

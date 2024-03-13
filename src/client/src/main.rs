@@ -1,17 +1,13 @@
-use coap::client::ObserveMessage;
 use coap::UdpCoAPClient;
-use coap_lite::{
-    CoapOption, CoapRequest, CoapResponse, Packet, RequestType as Method
-};
+use coap_lite::link_format::LinkFormatWrite;
+use coap_lite::{CoapRequest, CoapResponse, Packet, RequestType as Method};
 use std::io::{self, Write};
 use std::error::Error;
 use std::io::{ErrorKind, Error as IoError};
 use std::net::SocketAddr;
 use tokio;
 use tokio::net::UdpSocket;
-use tokio::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 use std::convert::Into;
 use lazy_static::lazy_static;
 use serde_json::json;
@@ -30,12 +26,18 @@ async fn handle_command() {
     let discovery_url = "coap://".to_owned()+GLOBAL_URL+"/discovery";
 
     loop {
+        println!("");
         println!("Enter command number:");
         println!("1. topic discovery");
         println!("2. subscribe <TopicName>");
         println!("3. create topic <TopicName>");
         println!("5. update topic data: PUT <TopicURI> <Payload>");
         println!("6. delete topic configuration: DELETE <TopicURI>");
+        println!("7. multicast broker discovery");
+        println!("8. multicast broker discovery uri query");
+        println!("9. broker discovery");
+        println!("10. broker discovery uri query");
+        println!("");
 
         io::stdout().flush().unwrap();
 
@@ -44,7 +46,7 @@ async fn handle_command() {
         let args: Vec<&str> = input.trim().split_whitespace().collect();
 
         match args.as_slice() {
-            ["1"] | ["topic discovery"] => {
+            ["1"] | ["topic name discovery"] => {
                 discovery(&discovery_url).await;
             },
             ["2", topic_name] | ["subscribe", topic_name] => {
@@ -59,7 +61,122 @@ async fn handle_command() {
             ["6", topic_name] | ["DELETE", topic_name] => {
                 delete_topic(topic_name).await;
             },
+            ["7"] | ["multicast", "broker", "discovery"] => {
+                multicast_broker_discovery().await;
+            },
+            ["8"] | ["multicast", "broker", "discovery", "uri", "query"] => {
+                multicast_discovery_uri_query().await;
+            },
+            ["9"] | ["broker", "discovery"] => {
+                broker_discovery().await;
+            },
+            ["10"] | ["broker", "discovery", "uri", "query"] => {
+                broker_discovery_uri_query().await;
+            },
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
+        }
+    }
+}
+
+/// Multicast discovery using ipv4 port 5683 and ipv6 segment 0.
+async fn multicast_discovery_uri_query(){
+    let addr = "0.0.0.0:5683";
+    println!("Multicast attempt start with uri query");
+
+    let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
+
+    let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
+    request.set_path(".well-known/core?rt=core.ps");
+
+    //segment is ipv6 segment for multicast, need to be called on all segments we want to use, but in our case ipv4 is used so "0" is enough for now
+    let segment: u8 = 0;
+    UdpCoAPClient::send_all_coap(&client, &request, segment).await.unwrap();
+    let response = client.receive_raw_response().await.unwrap();
+    let pay = String::from_utf8(response.message.payload);
+    match pay {
+        Ok(pay) => {
+            println!("Response: {}", pay);
+        }
+        Err(err) => {
+            println!("Error converting payload to string: {}", err);
+        }
+    }
+}
+
+/// Multicast discovery using ipv4 port 5683 and ipv6 segment 0.
+async fn multicast_broker_discovery(){
+    let addr = "0.0.0.0:5683";
+    println!("Multicast attempt start");
+
+    let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
+
+    let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
+    request.set_path(".well-known/core");
+
+    let mut buffer = String::new();
+    let mut write = LinkFormatWrite::new(&mut buffer);
+    write.link("")
+    .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps");
+
+    request.message.payload = buffer.into_bytes().to_vec();
+
+    //segment is ipv6 segment for multicast, need to be called on all segments we want to use, but in our case ipv4 is used so "0" is enough for now
+    let segment: u8 = 0;
+    UdpCoAPClient::send_all_coap(&client, &request, segment).await.unwrap();
+    let response = client.receive_raw_response().await.unwrap();
+    let pay = String::from_utf8(response.message.payload);
+    match pay {
+        Ok(pay) => {
+            println!("Response: {}", pay);
+        }
+        Err(err) => {
+            println!("Error converting payload to string: {}", err);
+        }
+    }
+}
+
+/// Multicast discovery using known broker address
+async fn broker_discovery(){
+    println!("Broker discovery start");
+    let addr = GLOBAL_URL;
+    let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
+    let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
+    request.set_path(".well-known/core");
+
+    let mut buffer = String::new();
+    let mut write = LinkFormatWrite::new(&mut buffer);
+    write.link("")
+    .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps");
+
+    request.message.payload = buffer.into_bytes().to_vec();
+
+    let response = UdpCoAPClient::perform_request(&mut client, request).await.unwrap();
+    let pay = String::from_utf8(response.message.payload);
+    match pay {
+        Ok(pay) => {
+            println!("Response: {}", pay);
+        }
+        Err(err) => {
+            println!("Error converting payload to string: {}", err);
+        }
+    }
+}
+
+/// Multicast discovery using known broker address
+async fn broker_discovery_uri_query(){
+    let addr = GLOBAL_URL;
+    let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
+    let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
+    request.set_path(".well-known/core?rt=core.ps");
+
+    let response = UdpCoAPClient::perform_request(&mut client, request).await.unwrap();
+    let pay = String::from_utf8(response.message.payload);
+    match pay {
+        Ok(pay) => {
+            println!("Response: {}", pay);
+        }
+        Err(err) => {
+            println!("Error converting payload to string: {}", err);
         }
     }
 }

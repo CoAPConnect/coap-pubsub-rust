@@ -1,9 +1,11 @@
 use coap::server::{Listener, UdpCoapListener};
-use coap_lite::{CoapOption, CoapRequest, ResponseType, RequestType as Method};
+use coap_lite::link_format::LinkFormatWrite;
+use coap_lite::{CoapRequest, ResponseType, RequestType as Method};
 use coap::Server;
 use resource::DataResource;
+use socket2::{Domain, Socket, Type};
 use tokio::runtime::Runtime;
-use std::net::{SocketAddr, UdpSocket};
+use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 mod resource;
 use resource::Topic;
 use resource::TopicCollection;
@@ -30,17 +32,26 @@ fn notify_client(response_type: coap_lite::ResponseType, message: &mut coap_lite
     message.set_status(response_type);
 }
 
-/// Handles broker discovery of core.ps, currently returns ip address of broker
+/// Handles broker discovery of core.ps, returns ip address of broker
 fn handle_broker_discovery(req: &mut CoapRequest<SocketAddr>){
     println!("Handling broker discovery");
 
+    println!("Received request with payload: {}", String::from_utf8(req.message.payload.clone()).unwrap());
+    // Set correct responsetypes and content formats in the response
     let response = req.response.as_mut().unwrap();
-    /* Actual message should be sen using linkformat
-    response.message.add_option(CoapOption::ContentFormat, (b"127.0.0.1:5683").to_vec());
-    */
+    response.set_status(ResponseType::Content);
+    response.message.set_content_format(coap_lite::ContentFormat::ApplicationLinkFormat);
 
-    // this line is for testing purposes
-    response.message.payload = (b"127.0.0.1:5683").to_vec()
+    // Create the linkformatted response containing the brokers address with rt=core.ps
+    let mut buffer = String::new();
+    let mut write = LinkFormatWrite::new(&mut buffer);
+    write.link("127.0.0.1:5683")
+    .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps");
+
+    println!("Sending response: {}", buffer);
+
+    // Return linkformatted response in bytes
+    response.message.payload = buffer.as_bytes().to_vec();
 }
 
 /// Topic name discovery - not an actual coap pubsub draft method
@@ -340,22 +351,42 @@ fn initialize_topics() {
     topic_collection.add_topic(topic2);
     topic_collection.add_topic(topic3);
 }
+
+/// server startup and handling requests is implemented in main
 fn main() {
     initialize_topics();
     let addr = "127.0.0.1:5683";
     Runtime::new().unwrap().block_on(async move {
+        // create socket2 socket and assign a random address to it, then join multicast group with it
+        // and attempt to make these nonblocking and reusable
+        let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(socket2::Protocol::UDP)).unwrap();
+        let addr2 = "0.0.0.0:5683".parse::<std::net::SocketAddr>().unwrap();
+        socket.bind(&addr2.into()).unwrap();
+        // multicast address for ipv4 coap is 224.0.1.187:5683
+        let multiaddr = Ipv4Addr::new(224, 0, 1, 187);
+        socket.join_multicast_v4(&multiaddr, &Ipv4Addr::UNSPECIFIED).unwrap();
+        socket.set_nonblocking(true).unwrap();
+        socket.set_reuse_address(true).unwrap();
+
+        // create std socket from socket2 socket and then tokio socket from std socket
+        let sock = UdpSocket::from(socket);
+        let socket_multi = tokio::net::UdpSocket::from_std(sock).unwrap();
+
+        // and socket from 127.0.0.1:5683
         let socket_local = tokio::net::UdpSocket::bind(addr).await.unwrap();
 
-        // create server from listeners TODO add multicast address as non-blocking
+        // create server from listeners
         let mut listeners: Vec<Box<dyn Listener>> = Vec::new();
         let listener1 = Box::new(UdpCoapListener::from_socket(socket_local));
+        let listener2 =  Box::new(UdpCoapListener::from_socket(socket_multi));
         listeners.push(listener1);
+        listeners.push(listener2);
         let mut server = Server::from_listeners(listeners);
 
         // remove basic functionality of handling get requests with observe setting
         server.disable_observe_handling(true).await;
         
-        println!("Server up on {}, listening for requests", addr);
+        println!("Broker up on {}, listening for requests.", addr);
 
         // run the server and process requests
         server.run(|mut request: Box<CoapRequest<SocketAddr>>| async {

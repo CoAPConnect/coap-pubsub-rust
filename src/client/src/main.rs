@@ -91,19 +91,34 @@ async fn multicast_discovery_uri_query(){
     //segment is ipv6 segment for multicast, need to be called on all segments we want to use, but in our case ipv4 is used so "0" is enough for now
     let segment: u8 = 0;
     UdpCoAPClient::send_all_coap(&client, &request, segment).await.unwrap();
-    let response = client.receive_raw_response().await.unwrap();
-    let pay = String::from_utf8(response.message.payload);
-    match pay {
-        Ok(pay) => {
-            println!("Response: {}", pay);
-        }
-        Err(err) => {
-            println!("Error converting payload to string: {}", err);
-        }
+
+    // listens for responses from multiple brokers for 1 second and then times out.
+    let start_time = std::time::Instant::now();
+    while start_time.elapsed().as_secs() < 1 {
+        let response = match client.receive_raw_response().await {
+            Ok(response) => response,
+            Err(err) => {
+                if err.kind() == std::io::ErrorKind::TimedOut {
+                    println!("No more responses received in 1s");
+                    break; // Exit the loop on timeout
+                }
+                println!("Error receiving response: {}", err);
+                break; // Exit the loop on error
+            }
+        };
+        
+        let pay = match String::from_utf8(response.message.payload) {
+            Ok(pay) => pay,
+            Err(err) => {
+                println!("Error converting payload to string: {}", err);
+                continue; // Skip to the next iteration on error
+            }
+        };
+        println!("Response: {}", pay);
     }
 }
 
-/// Multicast discovery using ipv4 port 5683 and ipv6 segment 0.
+/// Multicast discovery using ipv4 port 5683 and ipv6 segment 0. Listens for answers for 1 second.
 async fn multicast_broker_discovery(){
     let addr = "0.0.0.0:5683";
     println!("Multicast attempt start");
@@ -123,15 +138,30 @@ async fn multicast_broker_discovery(){
     //segment is ipv6 segment for multicast, need to be called on all segments we want to use, but in our case ipv4 is used so "0" is enough for now
     let segment: u8 = 0;
     UdpCoAPClient::send_all_coap(&client, &request, segment).await.unwrap();
-    let response = client.receive_raw_response().await.unwrap();
-    let pay = String::from_utf8(response.message.payload);
-    match pay {
-        Ok(pay) => {
-            println!("Response: {}", pay);
-        }
-        Err(err) => {
-            println!("Error converting payload to string: {}", err);
-        }
+
+    // listens for responses from multiple brokers for 1 second and then times out.
+    let start_time = std::time::Instant::now();
+    while start_time.elapsed().as_secs() < 1 {
+        let response = match client.receive_raw_response().await {
+            Ok(response) => response,
+            Err(err) => {
+                if err.kind() == std::io::ErrorKind::TimedOut {
+                    println!("No more responses received in 1s");
+                    break; // Exit the loop on timeout
+                }
+                println!("Error receiving response: {}", err);
+                break; // Exit the loop on error
+            }
+        };
+        
+        let pay = match String::from_utf8(response.message.payload) {
+            Ok(pay) => pay,
+            Err(err) => {
+                println!("Error converting payload to string: {}", err);
+                continue; // Skip to the next iteration on error
+            }
+        };
+        println!("Response: {}", pay);
     }
 }
 

@@ -176,8 +176,17 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
         if let Some(topic) = topic_collection_ref.find_topic_by_data_uri_mut(topic_data) {
             // Action is "data", update the topic's resource
             //If the topic has default data resource, make a new one and set it to the topic, and return 2.01 Created
-            //If the topic already has a data resource with data, update the data and return 2.04 Updated
-            //topic.get_data_resource().set_data(payload.to_string());
+            if topic.half_created == true {
+                let parent_uri = topic.get_topic_uri().to_string();
+                let data_resource = DataResource::new(topic_data.to_string(), parent_uri.clone());
+                topic.set_data_resource(data_resource);
+                topic.get_data_resource().set_data(payload.to_string());
+                topic.half_created = false;
+            }
+            // Otherwise, update the existing data resource and return 2.04 Updated
+            else {
+                topic.get_data_resource().set_data(payload.to_string());
+            }
         }
         else{
             println!("SETTING TOPIC DATA FAILED");
@@ -189,7 +198,7 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
     let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
 
     
-    let topic = topic_collection_ref.find_topic_by_uri(topic_uri).unwrap();
+    let topic = topic_collection_ref.find_topic_by_data_uri(topic_data).unwrap();
     //let topic_data_path = topic.get_topic_data().to_string().clone();
     //println!("{}",topic_data_path);
     for subscriber in topic.get_dr().get_subscribers() {
@@ -209,7 +218,7 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
 
     if let Some(ref mut message) = req.response {
         message.message.payload = b"Resource updated successfully".to_vec();
-        println!("{} was updated with data: {}", topic_uri, payload.clone());
+        println!("{} was updated with data: {}", topic_data, payload.clone());
     } else {
         // Topic not found
         if let Some(ref mut message) = req.response {

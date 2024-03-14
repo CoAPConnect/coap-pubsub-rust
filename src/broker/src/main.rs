@@ -135,9 +135,7 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
 /// Handling put requests done to the broker
 async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
     let path_str = req.get_path();
-    println!("Handling PUT request for path: {}", path_str);
     let components: Vec<&str> = path_str.split('/').filter(|s| !s.is_empty()).collect();
-    println!("components: {:?}", components);
 
     // Now expecting at least 2 components: "topicName" and "data"
     if components.len() < 2 {
@@ -223,9 +221,9 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
 
     if let Some(ref mut message) = req.response {
         if created {
-            notify_client(coap_lite::ResponseType::Created, message, "Resource created successfully");
+            notify_client(coap_lite::ResponseType::Created, message, "Created");
         } else if updated {
-            notify_client(coap_lite::ResponseType::Changed, message, "Resource updated successfully");
+            notify_client(coap_lite::ResponseType::Changed, message, "Updated");
         }
         //message.message.payload = b"Resource updated successfully".to_vec();
         //println!("{} was updated with data: {}", topic_data, payload.clone());

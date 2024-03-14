@@ -43,13 +43,13 @@ impl Topic {
             topic_name,
             resource_type,
             topic_uri: Self::generate_uri(),
-            topic_data: String::new(),
+            topic_data: Self::generate_uri(),
             media_type: String::new(),
             topic_type: String::new(),
             expiration_date: String::new(),
             max_subscribers: u32::MAX,
             observe_check: 86400,
-            data_resource: DataResource::new("def".to_string(),"def".to_string()),
+            data_resource: DataResource::default(),
         }
     }
 
@@ -156,6 +156,7 @@ impl Topic {
             .collect();
         random_string
     }
+    
 }
 ///Topic collection as struct
 pub struct TopicCollection {
@@ -276,7 +277,7 @@ impl TopicCollection {
         }
     }
 }
-
+#[derive(Default)]
 pub struct DataResource {
     data_uri: String,
     parent_topic_uri: String,

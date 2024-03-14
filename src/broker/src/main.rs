@@ -335,10 +335,17 @@ fn initialize_topics() {
     let mut data3 = DataResource::new(data_path3.clone(), "789".to_string());
     data3.set_data(example_data.to_string());
     //topic_collection.set_data(data_path3.clone(), data3);
+    let topic4 = Topic::new("topic4".to_string(), "core.ps.conf".to_string());
+    let topic5 = Topic::new("topic5".to_string(), "core.ps.conf".to_string());
+    //println!("Topic4 topic_uri is: {}", topic4.get_topic_uri().to_string());
+    //println!("Topic4 topic_data is: {}", topic4.get_topic_data().to_string());
 
     topic_collection.add_topic(topic1);
     topic_collection.add_topic(topic2);
     topic_collection.add_topic(topic3);
+    topic_collection.add_topic(topic4);
+    topic_collection.add_topic(topic5);
+
 }
 fn main() {
     initialize_topics();

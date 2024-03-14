@@ -157,6 +157,7 @@ impl Topic {
         random_string
     }
     
+    
 }
 ///Topic collection as struct
 pub struct TopicCollection {
@@ -253,6 +254,10 @@ impl TopicCollection {
     /// Finds a topic in the topic collection by its URI.
     pub fn find_topic_by_uri(&self, topic_uri: &str) -> Option<&Topic> {
         self.topics.get(topic_uri)
+    }
+    //Find a topic in the collection by its topic_data URI and return it as mutable
+    pub fn find_topic_by_data_uri_mut(&mut self, topic_data_uri: &str) -> Option<&mut Topic> {
+        self.topics.values_mut().find(|topic| topic.get_topic_data() == topic_data_uri)
     }
 
     /// Finds a topic in the topic collection by its URI and returns it as mutable

@@ -135,7 +135,9 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
 /// Handling put requests done to the broker
 async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
     let path_str = req.get_path();
+    println!("Handling PUT request for path: {}", path_str);
     let components: Vec<&str> = path_str.split('/').filter(|s| !s.is_empty()).collect();
+    println!("components: {:?}", components);
 
     // Now expecting at least 2 components: "topicName" and "data"
     if components.len() < 2 {
@@ -143,7 +145,7 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
         return;
     }
 
-    let topic_name = components[0]; // Adjusted index
+    let topic_data = components[0]; // Adjusted index
     let action = components[1]; // Adjusted index
 
     // Ensure the action is what we expect, e.g., "data"
@@ -152,11 +154,11 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
         return;
     }
 
-    update_topic_data(req, topic_name).await;
+    update_topic_data(req, topic_data).await;
 }
 
 /// Updates data resource associated with a topic
-async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_uri: &str) {
+async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) {
     let payload = match String::from_utf8(req.message.payload.clone()) {
         Ok(content) => content,
         Err(_) => {
@@ -170,10 +172,12 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_uri: &str) {
 
     // Obtain a mutable reference to the TopicCollection inside the Arc
     if let Some(topic_collection_ref) = Arc::get_mut(&mut locked_topic_collection) {
-        // Attempt to find the topic by name
-        if let Some(topic) = topic_collection_ref.find_topic_by_uri_mut(topic_uri) {
+        // Attempt to find the topic by its topic_data
+        if let Some(topic) = topic_collection_ref.find_topic_by_data_uri_mut(topic_data) {
             // Action is "data", update the topic's resource
-            topic.get_data_resource().set_data(payload.to_string());
+            //If the topic has default data resource, make a new one and set it to the topic, and return 2.01 Created
+            //If the topic already has a data resource with data, update the data and return 2.04 Updated
+            //topic.get_data_resource().set_data(payload.to_string());
         }
         else{
             println!("SETTING TOPIC DATA FAILED");
@@ -230,10 +234,11 @@ async fn inform_subscriber(addr: SocketAddr, resource: &str) -> Result<(), Box<d
 fn create_topic(topic_name: &String, resource_type: &String, req: &mut coap_lite::CoapRequest<SocketAddr>) {
     let topic = Topic::new(topic_name.clone(), resource_type.clone());
     let topic_uri = topic.get_topic_uri();
+    let topic_data = topic.get_topic_data().to_string();
     let mut locked_topic_collection: std::sync::MutexGuard<'_, Arc<TopicCollection>> = TOPIC_COLLECTION_MUTEX.lock().unwrap();
     let mut topic_collection_ref = Arc::get_mut(&mut locked_topic_collection);
     topic_collection_ref.as_mut().unwrap().add_topic(topic);
-    println!("Topic '{}' with uri: {}, and of type '{}' added to the topic map.", topic_name, topic_uri, resource_type);
+    println!("Topic '{}' with uri: {}, data_uri: {}, and of type '{}' added to the topic map.", topic_name, topic_uri, topic_data, resource_type);
 
     if let Some(ref mut message) = req.response {
         message.message.payload = b"Topic created succesfully".to_vec();

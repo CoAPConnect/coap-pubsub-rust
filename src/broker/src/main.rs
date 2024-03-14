@@ -169,7 +169,8 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
 
     // Lock the mutex
     let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
-
+    let mut created = false;
+    let mut updated = false;
     // Obtain a mutable reference to the TopicCollection inside the Arc
     if let Some(topic_collection_ref) = Arc::get_mut(&mut locked_topic_collection) {
         // Attempt to find the topic by its topic_data
@@ -182,10 +183,13 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
                 topic.set_data_resource(data_resource);
                 topic.get_data_resource().set_data(payload.to_string());
                 topic.half_created = false;
+                created = true;
+                
             }
             // Otherwise, update the existing data resource and return 2.04 Updated
             else {
                 topic.get_data_resource().set_data(payload.to_string());
+                updated = true;
             }
         }
         else{
@@ -196,9 +200,10 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
     // Notify all subscribers of the update
     //let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
     let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
+    let topic_uri = topic_collection_ref.find_topic_by_data_uri(topic_data).unwrap().get_topic_uri();
 
     
-    let topic = topic_collection_ref.find_topic_by_data_uri(topic_data).unwrap();
+    let topic = topic_collection_ref.find_topic_by_uri(&topic_uri).unwrap();
     //let topic_data_path = topic.get_topic_data().to_string().clone();
     //println!("{}",topic_data_path);
     for subscriber in topic.get_dr().get_subscribers() {
@@ -217,8 +222,13 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
     }
 
     if let Some(ref mut message) = req.response {
-        message.message.payload = b"Resource updated successfully".to_vec();
-        println!("{} was updated with data: {}", topic_data, payload.clone());
+        if created {
+            notify_client(coap_lite::ResponseType::Created, message, "Resource created successfully");
+        } else if updated {
+            notify_client(coap_lite::ResponseType::Changed, message, "Resource updated successfully");
+        }
+        //message.message.payload = b"Resource updated successfully".to_vec();
+        //println!("{} was updated with data: {}", topic_data, payload.clone());
     } else {
         // Topic not found
         if let Some(ref mut message) = req.response {

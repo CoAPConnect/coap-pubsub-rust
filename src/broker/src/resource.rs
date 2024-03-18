@@ -30,6 +30,7 @@ pub struct Topic {
     pub observe_check: u32,
     /// KAVAN TEST data resource as part of topic
     pub data_resource: DataResource,
+    pub half_created: bool,
 }
 
 ///Topic implementation.
@@ -50,6 +51,7 @@ impl Topic {
             max_subscribers: u32::MAX,
             observe_check: 86400,
             data_resource: DataResource::default(),
+            half_created: true,
         }
     }
 
@@ -156,6 +158,8 @@ impl Topic {
             .collect();
         random_string
     }
+    
+    
 }
 ///Topic collection as struct
 pub struct TopicCollection {
@@ -252,6 +256,14 @@ impl TopicCollection {
     /// Finds a topic in the topic collection by its URI.
     pub fn find_topic_by_uri(&self, topic_uri: &str) -> Option<&Topic> {
         self.topics.get(topic_uri)
+    }
+    /// Find a topic in the collection by its topic_data URI
+    pub fn find_topic_by_data_uri(&self, topic_data_uri: &str) -> Option<&Topic> {
+        self.topics.values().find(|topic| topic.get_topic_data() == topic_data_uri)
+    }
+    //Find a topic in the collection by its topic_data URI and return it as mutable
+    pub fn find_topic_by_data_uri_mut(&mut self, topic_data_uri: &str) -> Option<&mut Topic> {
+        self.topics.values_mut().find(|topic| topic.get_topic_data() == topic_data_uri)
     }
 
     /// Finds a topic in the topic collection by its URI and returns it as mutable

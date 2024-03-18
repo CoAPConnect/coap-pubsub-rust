@@ -143,7 +143,7 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
         return;
     }
 
-    let topic_name = components[0]; // Adjusted index
+    let topic_data = components[0]; // Adjusted index
     let action = components[1]; // Adjusted index
 
     // Ensure the action is what we expect, e.g., "data"
@@ -152,11 +152,11 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
         return;
     }
 
-    update_topic_data(req, topic_name).await;
+    update_topic_data(req, topic_data).await;
 }
 
 /// Updates data resource associated with a topic
-async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_uri: &str) {
+async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) {
     let payload = match String::from_utf8(req.message.payload.clone()) {
         Ok(content) => content,
         Err(_) => {
@@ -167,13 +167,28 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_uri: &str) {
 
     // Lock the mutex
     let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
-
+    let mut created = false;
+    let mut updated = false;
     // Obtain a mutable reference to the TopicCollection inside the Arc
     if let Some(topic_collection_ref) = Arc::get_mut(&mut locked_topic_collection) {
-        // Attempt to find the topic by name
-        if let Some(topic) = topic_collection_ref.find_topic_by_uri_mut(topic_uri) {
+        // Attempt to find the topic by its topic_data
+        if let Some(topic) = topic_collection_ref.find_topic_by_data_uri_mut(topic_data) {
             // Action is "data", update the topic's resource
-            topic.get_data_resource().set_data(payload.to_string());
+            //If the topic has default data resource, make a new one and set it to the topic, and return 2.01 Created
+            if topic.half_created == true {
+                let parent_uri = topic.get_topic_uri().to_string();
+                let data_resource = DataResource::new(topic_data.to_string(), parent_uri.clone());
+                topic.set_data_resource(data_resource);
+                topic.get_data_resource().set_data(payload.to_string());
+                topic.half_created = false;
+                created = true;
+                
+            }
+            // Otherwise, update the existing data resource and return 2.04 Updated
+            else {
+                topic.get_data_resource().set_data(payload.to_string());
+                updated = true;
+            }
         }
         else{
             println!("SETTING TOPIC DATA FAILED");
@@ -183,9 +198,10 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_uri: &str) {
     // Notify all subscribers of the update
     //let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
     let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
+    let topic_uri = topic_collection_ref.find_topic_by_data_uri(topic_data).unwrap().get_topic_uri();
 
     
-    let topic = topic_collection_ref.find_topic_by_uri(topic_uri).unwrap();
+    let topic = topic_collection_ref.find_topic_by_uri(&topic_uri).unwrap();
     //let topic_data_path = topic.get_topic_data().to_string().clone();
     //println!("{}",topic_data_path);
     for subscriber in topic.get_dr().get_subscribers() {
@@ -204,8 +220,13 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_uri: &str) {
     }
 
     if let Some(ref mut message) = req.response {
-        message.message.payload = b"Resource updated successfully".to_vec();
-        println!("{} was updated with data: {}", topic_uri, payload.clone());
+        if created {
+            notify_client(coap_lite::ResponseType::Created, message, "Created");
+        } else if updated {
+            notify_client(coap_lite::ResponseType::Changed, message, "Updated");
+        }
+        //message.message.payload = b"Resource updated successfully".to_vec();
+        //println!("{} was updated with data: {}", topic_data, payload.clone());
     } else {
         // Topic not found
         if let Some(ref mut message) = req.response {
@@ -230,10 +251,11 @@ async fn inform_subscriber(addr: SocketAddr, resource: &str) -> Result<(), Box<d
 fn create_topic(topic_name: &String, resource_type: &String, req: &mut coap_lite::CoapRequest<SocketAddr>) {
     let topic = Topic::new(topic_name.clone(), resource_type.clone());
     let topic_uri = topic.get_topic_uri();
+    let topic_data = topic.get_topic_data().to_string();
     let mut locked_topic_collection: std::sync::MutexGuard<'_, Arc<TopicCollection>> = TOPIC_COLLECTION_MUTEX.lock().unwrap();
     let mut topic_collection_ref = Arc::get_mut(&mut locked_topic_collection);
     topic_collection_ref.as_mut().unwrap().add_topic(topic);
-    println!("Topic '{}' with uri: {}, and of type '{}' added to the topic map.", topic_name, topic_uri, resource_type);
+    println!("Topic '{}' with uri: {}, data_uri: {}, and of type '{}' added to the topic map.", topic_name, topic_uri, topic_data, resource_type);
 
     if let Some(ref mut message) = req.response {
         message.message.payload = b"Topic created succesfully".to_vec();
@@ -335,10 +357,17 @@ fn initialize_topics() {
     let mut data3 = DataResource::new(data_path3.clone(), "789".to_string());
     data3.set_data(example_data.to_string());
     //topic_collection.set_data(data_path3.clone(), data3);
+    let topic4 = Topic::new("topic4".to_string(), "core.ps.conf".to_string());
+    let topic5 = Topic::new("topic5".to_string(), "core.ps.conf".to_string());
+    //println!("Topic4 topic_uri is: {}", topic4.get_topic_uri().to_string());
+    //println!("Topic4 topic_data is: {}", topic4.get_topic_data().to_string());
 
     topic_collection.add_topic(topic1);
     topic_collection.add_topic(topic2);
     topic_collection.add_topic(topic3);
+    topic_collection.add_topic(topic4);
+    topic_collection.add_topic(topic5);
+
 }
 fn main() {
     initialize_topics();

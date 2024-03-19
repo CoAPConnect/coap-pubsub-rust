@@ -34,7 +34,7 @@ async fn handle_command() {
         println!("1. topic discovery");
         println!("2. subscribe <TopicName>");
         println!("3. create topic <TopicName>");
-        println!("5. publish or update dataresource: PUT <DataURI> <Payload>");
+        println!("5. update topic data: PUT <TopicURI> <Payload>");
         println!("6. delete topic configuration: DELETE <TopicURI>");
 
         io::stdout().flush().unwrap();

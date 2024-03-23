@@ -1,15 +1,20 @@
 use coap::server::{Listener, UdpCoapListener};
+use coap_lite::{CoapResponse, Packet};
 use coap_lite::{CoapOption, CoapRequest, ResponseType, RequestType as Method};
 use coap::Server;
 use resource::DataResource;
 use tokio::runtime::Runtime;
+use tokio::sync::oneshot;
+use tokio::time::timeout;
 use std::net::{SocketAddr, UdpSocket};
+use std::time::Duration;
 mod resource;
 use resource::Topic;
 use resource::TopicCollection;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
+use tokio::task;
 
 // Topic Collection resource to store all topic-related data
 // Lock the mutex to access the topic_collection
@@ -89,7 +94,8 @@ fn handle_subscription(req: &mut CoapRequest<SocketAddr>, topic_name: &str, subs
                 // Prepare a success response
                 if let Some(ref mut message) = req.response {
                     // payload message just for testing purposes
-                    message.message.payload = b"Subscribed successfully".to_vec();
+                    //message.message.payload = b"Subscribed successfully".to_vec();
+                    message.message.payload = data.get_data().clone().into_bytes().to_vec();
                     message.message.set_content_format(coap_lite::ContentFormat::try_from(110).unwrap());
                     message.message.set_observe_value(10001);
                 }
@@ -220,7 +226,7 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_uri: &str) {
     for subscriber in topic.get_dr().get_subscribers() {
         //let path = topic.get_topic_data().to_string().clone();
         //let resource_clone = topic_collection_ref.get_data_from_path(path.clone()).get_data().clone();
-        let path = "data/".to_owned()+topic.get_dr().get_data();
+        let path = topic.get_dr().get_data().clone();
         // Clone the necessary data and move it into the async block
         let subscriber_clone = subscriber.clone();
         println!("{}",subscriber_clone);
@@ -244,15 +250,22 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_uri: &str) {
     
 }
 
-//TODO, currently not working nor following draft
+/// Inform a topic subscriber about new data
 async fn inform_subscriber(addr: SocketAddr, resource: &str) -> Result<(), Box<dyn std::error::Error>> {
-    // Serialize your resource as JSON, or use it directly if it's already a JSON string
-    let payload = resource.as_bytes();
-    // Placeholder for asynchronous network call
+
+    let packet = Packet::new();
+    let mut message = CoapResponse::new(&packet).unwrap();
+    message.set_status(ResponseType::Content);
+    message.message.set_content_format(coap_lite::ContentFormat::try_from(110).unwrap());
+    message.message.set_observe_value(10002);
+    message.message.payload = resource.as_bytes().to_vec();
+
+    let payload = message.message.to_bytes().unwrap();
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.send_to(&payload, &addr)?;
 
     Ok(())
+    
 }
 
 /// Creates a new topic
@@ -354,7 +367,7 @@ fn initialize_topics() {
     topic3.set_topic_data(data_path3.clone());
 
     let mut data1 = DataResource::new(data_path1.clone(), "123".to_string());
-    data1.set_data(data_path1.clone());
+    data1.set_data(example_data.to_string());
     //topic_collection.set_data(data_path1, data1);
 
     let mut data2 = DataResource::new(data_path2.clone(), "456".to_string());

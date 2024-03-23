@@ -3,10 +3,12 @@ use coap::UdpCoAPClient;
 use coap_lite::{
     CoapOption, CoapRequest, CoapResponse, Packet, RequestType as Method
 };
+use tokio::time::sleep;
 use std::io::{self, Write};
 use std::error::Error;
 use std::io::{ErrorKind, Error as IoError};
 use std::net::SocketAddr;
+use std::time::Duration;
 use tokio;
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
@@ -147,9 +149,12 @@ async fn subscription(topic_name: &str, observe_value: u32) -> Result<(), Box<dy
     let packet = request.message.to_bytes().unwrap();
     listen_socket.send_to(&packet[..], &GLOBAL_URL).await.expect("Could not send the data");
 
-    let _handle = tokio::spawn(async move {
-        listen_for_messages(listen_socket).await;
-    });
+    // starts listening to topic if observe is 0
+    if observe_value == 0{
+        let _handle = tokio::spawn(async move {
+            listen_for_messages(listen_socket).await;
+        });
+    }
 
     return Ok(());
 }
@@ -165,12 +170,18 @@ async fn listen_for_messages(socket: Arc<UdpSocket>) {
                 // Successfully received a message
                 let packet = Packet::from_bytes(&buf[..len]).unwrap();
                 let request = CoapRequest::from_packet(packet, src);
-                let msg = String::from_utf8(request.message.payload).unwrap();
+                let clone = request.clone();
+                let msg = String::from_utf8(clone.message.payload).unwrap();
                 println!("Received message from {}: {}", src, msg);
+
+                if request.message.get_observe_value().unwrap().unwrap().eq(&1){
+                    println!("Stopped listening for topic succesfully");
+                    break;
+                }
             },
             Err(e) => {
                 // An error occurred
-                eprintln!("Error receiving message: {}", e);
+                eprintln!("Error receiving message, stopping listening with error message: {}", e);
                 break;
             }
         }

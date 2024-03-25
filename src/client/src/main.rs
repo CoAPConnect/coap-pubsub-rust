@@ -1,19 +1,15 @@
-use coap::client::ObserveMessage;
+
 use coap::UdpCoAPClient;
 use coap_lite::{
-    CoapOption, CoapRequest, CoapResponse, Packet, RequestType as Method
+    CoapRequest, CoapResponse, Packet, RequestType as Method
 };
-use tokio::time::sleep;
 use std::io::{self, Write};
 use std::error::Error;
 use std::io::{ErrorKind, Error as IoError};
 use std::net::SocketAddr;
-use std::time::Duration;
 use tokio;
 use tokio::net::UdpSocket;
-use tokio::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 use std::convert::Into;
 use lazy_static::lazy_static;
 use serde_json::json;
@@ -150,18 +146,17 @@ async fn subscription(topic_name: &str, observe_value: u32) -> Result<(), Box<dy
     listen_socket.send_to(&packet[..], &GLOBAL_URL).await.expect("Could not send the data");
 
     // starts listening to topic if observe is 0
-    if observe_value == 0{
+    //if observe_value == 0{
         let _handle = tokio::spawn(async move {
             listen_for_messages(listen_socket).await;
         });
-    }
+    //}
 
     return Ok(());
 }
 
 
 /// Listen for responses and future publifications on followed topics
-/// In the future should check that the response has observe value to see subscription was ok
 async fn listen_for_messages(socket: Arc<UdpSocket>) {
     let mut buf = [0u8; 1024];
     loop {
@@ -174,8 +169,27 @@ async fn listen_for_messages(socket: Arc<UdpSocket>) {
                 let msg = String::from_utf8(clone.message.payload).unwrap();
                 println!("Received message from {}: {}", src, msg);
 
-                if request.message.get_observe_value().unwrap().unwrap().eq(&1){
-                    println!("Stopped listening for topic succesfully");
+                if let Some(result) = request.message.get_observe_value() {
+                    match result {
+                        Ok(value) => {
+                            // Handle value when it's 1
+                            if value == 1 {
+                                println!("Stopped listening for topic succesfully");
+                                break;
+                            } else {
+                                // Continue to listen, value is something else than 1.
+                                continue;
+                            }
+                        }
+                        Err(err) => {
+                            // Handle error when parsing the value
+                            println!("Error parsing the observe value, stopping listening: {:?}", err);
+                            break;
+                        }
+                    }
+                } else {
+                    // Observe value is not present, this is fine on some messages but not on the ones listened on this function
+                    eprintln!("Message doesn't have observe value set so it's erroneous, stopping listening");
                     break;
                 }
             },

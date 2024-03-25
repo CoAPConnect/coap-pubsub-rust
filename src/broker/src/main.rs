@@ -116,17 +116,21 @@ fn handle_subscription(req: &mut CoapRequest<SocketAddr>, topic_name: &str, subs
                 else {
                     // Subscriber not found, prepare an error response
                     if let Some(ref mut message) = req.response {
+                        println!("{} tried to unsubsrcibe to {} but it failed because client isn't subscribed to that topic", subscriber_addr.clone(), topic_name);
                         message.message.payload = b"Subscriber not found".to_vec();
+                        message.message.set_observe_value(1);
                     }
                 }
             }
         }
     } 
     else {
-        // Topic does not exist, prepare an error response
+        // Topic does not exist, prepare an error response and respond that the subscibe action failed
         if let Some(ref mut message) = req.response {
+            println!("{} tried to unsubsrcibe to {} but it failed because no topic with that name exists", subscriber_addr.clone(), topic_name);
             message.message.payload = b"Topic not found".to_vec();
             message.set_status(coap_lite::ResponseType::NotFound);
+            message.message.set_observe_value(1);
         }
     }
 }

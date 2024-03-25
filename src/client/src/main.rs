@@ -1,7 +1,7 @@
-use coap::client::ObserveMessage;
+
 use coap::UdpCoAPClient;
 use coap_lite::{
-    CoapOption, CoapRequest, CoapResponse, Packet, RequestType as Method
+    CoapRequest, CoapResponse, Packet, RequestType as Method
 };
 use std::io::{self, Write};
 use std::error::Error;
@@ -9,9 +9,7 @@ use std::io::{ErrorKind, Error as IoError};
 use std::net::SocketAddr;
 use tokio;
 use tokio::net::UdpSocket;
-use tokio::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 use std::convert::Into;
 use lazy_static::lazy_static;
 use serde_json::json;
@@ -33,7 +31,8 @@ async fn handle_command() {
         println!("Enter command number:");
         println!("1. topic discovery");
         println!("2. subscribe <TopicName>");
-        println!("3. create topic <TopicName>");
+        println!("3. unsubscribe <TopicName>");
+        println!("4. create topic <TopicName>");
         println!("5. update topic data: PUT <TopicURI> <Payload>");
         println!("6. delete topic configuration: DELETE <TopicURI>");
 
@@ -48,9 +47,12 @@ async fn handle_command() {
                 discovery(&discovery_url).await;
             },
             ["2", topic_name] | ["subscribe", topic_name] => {
-                subscribe(topic_name).await;
+                subscription(topic_name, 0).await;
             },
-            ["3", topic_name] | ["create topic", topic_name]=>{
+            ["3", topic_name] | ["unsubscribe", topic_name] => {
+                subscription(topic_name, 1).await;
+            },
+            ["4", topic_name] | ["create topic", topic_name]=>{
                 create_topic(topic_name).await;
             },
             ["5", topic_name, payload] | ["PUT", topic_name, payload] => {
@@ -115,7 +117,7 @@ async fn update_topic(topic_name: &str, payload: &str) -> Result<(), Box<dyn Err
     }
 }
 
-async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
+async fn subscription(topic_name: &str, observe_value: u32) -> Result<(), Box<dyn Error>> {
 
     let listen_socket = {
         let mut ls = LISTENER_SOCKET.lock().unwrap();
@@ -130,22 +132,31 @@ async fn subscribe(topic_name: &str) -> Result<(), Box<dyn Error>> {
 
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
     request.set_method(Method::Get);
-    request.set_path(&format!("/{}/subscribe", topic_name));
-    request.message.set_observe_value(0);
+
+    // Set the path to subscribe or unsubscribe based on the `observe_value` parameter
+    let path = match observe_value {
+        0 => format!("/{}/subscribe", topic_name),
+        _ => format!("/{}/unsubscribe", topic_name),
+    };
+
+    request.set_path(&path);
+    request.message.set_observe_value(observe_value);
 
     let packet = request.message.to_bytes().unwrap();
     listen_socket.send_to(&packet[..], &GLOBAL_URL).await.expect("Could not send the data");
 
-    let _handle = tokio::spawn(async move {
-        listen_for_messages(listen_socket).await;
-    });
+    // starts listening to topic if observe is 0
+    //if observe_value == 0{
+        let _handle = tokio::spawn(async move {
+            listen_for_messages(listen_socket).await;
+        });
+    //}
 
     return Ok(());
 }
 
 
 /// Listen for responses and future publifications on followed topics
-/// In the future should check that the response has observe value to see subscription was ok
 async fn listen_for_messages(socket: Arc<UdpSocket>) {
     let mut buf = [0u8; 1024];
     loop {
@@ -154,12 +165,37 @@ async fn listen_for_messages(socket: Arc<UdpSocket>) {
                 // Successfully received a message
                 let packet = Packet::from_bytes(&buf[..len]).unwrap();
                 let request = CoapRequest::from_packet(packet, src);
-                let msg = String::from_utf8(request.message.payload).unwrap();
+                let clone = request.clone();
+                let msg = String::from_utf8(clone.message.payload).unwrap();
                 println!("Received message from {}: {}", src, msg);
+
+                if let Some(result) = request.message.get_observe_value() {
+                    match result {
+                        Ok(value) => {
+                            // Handle value when it's 1
+                            if value == 1 {
+                                println!("Stopped listening for topic succesfully");
+                                break;
+                            } else {
+                                // Continue to listen, value is something else than 1.
+                                continue;
+                            }
+                        }
+                        Err(err) => {
+                            // Handle error when parsing the value
+                            println!("Error parsing the observe value, stopping listening: {:?}", err);
+                            break;
+                        }
+                    }
+                } else {
+                    // Observe value is not present, this is fine on some messages but not on the ones listened on this function
+                    eprintln!("Message doesn't have observe value set so it's erroneous, stopping listening");
+                    break;
+                }
             },
             Err(e) => {
                 // An error occurred
-                eprintln!("Error receiving message: {}", e);
+                eprintln!("Error receiving message, stopping listening with error message: {}", e);
                 break;
             }
         }

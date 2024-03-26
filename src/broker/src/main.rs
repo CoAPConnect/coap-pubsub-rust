@@ -58,7 +58,7 @@ fn handle_broker_discovery(req: &mut CoapRequest<SocketAddr>){
     .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps");
 
     println!("Sending response: {}", buffer);
-
+  
     // Return linkformatted response in bytes
     response.message.payload = buffer.as_bytes().to_vec();
 }
@@ -253,7 +253,6 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
     else{
         println!("Couldnt open topic collection");
         return;
-
     }
 
     // Notify all subscribers of the update

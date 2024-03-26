@@ -9,7 +9,6 @@ use tokio::runtime::Runtime;
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 use tokio::sync::oneshot;
 use tokio::time::timeout;
-use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
 mod resource;
 use resource::Topic;

@@ -291,7 +291,8 @@ async fn inform_subscriber(addr: SocketAddr, response_type: ResponseType, resour
     let mut message = CoapResponse::new(&packet).unwrap();
     message.set_status(response_type);
     message.message.payload = resource.as_bytes().to_vec();
-    message.message.set_observe_value(1002);
+    message.message.set_content_format(coap_lite::ContentFormat::try_from(110).unwrap());
+    message.message.set_observe_value(10002);
 
     let payload = message.message.to_bytes().unwrap();
     let socket = UdpSocket::bind("0.0.0.0:0")?;

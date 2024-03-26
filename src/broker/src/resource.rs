@@ -51,8 +51,10 @@ pub struct Topic {
     pub max_subscribers: u32,
     /// The amount of time in seconds between each observer check, removing uninterested observers
     pub observe_check: u32,
-    /// KAVAN TEST data resource as part of topic
+    /// Data resource as part of topic
     pub data_resource: DataResource,
+    /// State of the topic: half-created of fully created bool
+    pub half_created: bool,
 }
 
 ///Topic implementation.

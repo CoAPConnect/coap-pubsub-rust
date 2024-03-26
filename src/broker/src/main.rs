@@ -1,22 +1,18 @@
 use coap::server::{Listener, UdpCoapListener};
 use coap_lite::link_format::LinkFormatWrite;
-use coap_lite::{CoapResponse, Packet};
-use coap_lite::{CoapOption, CoapRequest, ResponseType, RequestType as Method};
+use coap_lite::CoapResponse;
+use coap_lite::{CoapRequest, ResponseType, RequestType as Method};
 use coap::Server;
 use resource::DataResource;
 use socket2::{Domain, Socket, Type};
 use tokio::runtime::Runtime;
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
-use tokio::sync::oneshot;
-use tokio::time::timeout;
-use std::time::Duration;
 mod resource;
 use resource::Topic;
 use resource::TopicCollection;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
-use tokio::task;
 
 // Topic Collection resource to store all topic-related data
 // Lock the mutex to access the topic_collection
@@ -93,6 +89,16 @@ fn handle_subscription(req: &mut CoapRequest<SocketAddr>, topic_name: &str, subs
 
     // Check if the topic exists
     if let Some(topic) = topic_collection_ref.find_topic_by_name_mut(topic_name) {
+        if topic.half_created {
+            // Topic does not exist, prepare an error response and respond that the subscibe action failed
+            if let Some(ref mut message) = req.response {
+            println!("{} tried to interact with {} but it failed because that topic is in half-created state", subscriber_addr.clone(), topic_name);
+            message.message.payload = b"Topic not found".to_vec();
+            message.set_status(coap_lite::ResponseType::NotFound);
+            message.message.set_observe_value(1);
+            return;
+        }
+        }
         let data = topic.get_data_resource();
 
         match action {
@@ -220,8 +226,7 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
     let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
     let mut created = false;
     let mut updated = false;
-    let mut failed = false;
-    let mut topic: &mut Topic;
+    let topic: &mut Topic;
     // Obtain a mutable reference to the TopicCollection inside the Arc
     if let Some(topic_collection_ref) = Arc::get_mut(&mut locked_topic_collection) {
         // Attempt to find the topic by its topic_data
@@ -230,7 +235,6 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
             // Action is "data", update the topic's resource
             //If the topic has default data resource, make a new one and set it to the topic, and return 2.01 Created
             if topic.half_created == true {
-                let parent_uri = topic.get_topic_uri().to_string();
                 topic.get_data_resource().set_data(payload.to_string());
                 topic.half_created = false;
                 created = true;
@@ -257,7 +261,6 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
 
     // Notify all subscribers of the update
     for subscriber in topic.get_dr().get_subscribers() {
-        let path = topic.get_dr().get_data().to_owned();
         // Clone the necessary data and move it into the async block
         let subscriber_clone = subscriber.clone();
         let resource = topic.get_dr().get_data().to_owned();
@@ -285,7 +288,7 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
 }
 
 async fn inform_subscriber(addr: SocketAddr, response_type: ResponseType, resource: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let mut packet = coap_lite::Packet::new();
+    let packet = coap_lite::Packet::new();
 
     let mut message = CoapResponse::new(&packet).unwrap();
     message.set_status(response_type);
@@ -358,13 +361,6 @@ fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_uri: &str, local_addr: 
             notify_client(coap_lite::ResponseType::Deleted, message, "Topic deleted succesfully");
             println!("{} deleted {}", local_addr.to_string(), topic_uri);
         }
-
-}
-
-fn handle_resource_deletion_or_invalid_path(req: &mut CoapRequest<SocketAddr>, components: &[&str]) {
-    // Implement resource deletion or handle invalid path
-    // This function is a placeholder for actual logic
-    println!("Resource deletion or invalid path handling is not implemented.");
 }
 
 /// Initializes 3 topics to topic collection with names "topic1, topic2 & topic3"
@@ -391,12 +387,15 @@ fn initialize_topics() {
     topic1.get_data_resource().set_data("123".to_string());
     topic1.set_topic_uri("123".to_string());
     topic1.set_topic_data(data_path1.clone());
+    topic1.half_created = false;
     let mut topic2 = Topic::new("topic2".to_string(), "core.ps.conf".to_string());
     topic2.set_topic_uri("456".to_string());
     topic2.set_topic_data(data_path2.clone());
+    topic2.half_created = false;
     let mut topic3 = Topic::new("topic3".to_string(), "core.ps.conf".to_string());
     topic3.set_topic_uri("789".to_string());
     topic3.set_topic_data(data_path3.clone());
+    topic3.half_created = false;
 
     let mut data1 = DataResource::new();
     data1.set_data(example_data.to_string());

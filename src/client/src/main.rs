@@ -51,19 +51,19 @@ async fn handle_command() {
                 discovery(&discovery_url).await;
             },
             ["2", topic_name] | ["subscribe", topic_name] => {
-                subscription(topic_name, 0).await;
+                let _ = subscription(topic_name, 0).await;
             },
             ["3", topic_name] | ["unsubscribe", topic_name] => {
-                subscription(topic_name, 1).await;
+                let _ = subscription(topic_name, 1).await;
             },
             ["4", topic_name] | ["create topic", topic_name]=>{
                 create_topic(topic_name).await;
             },
             ["5", topic_name, payload] | ["PUT", topic_name, payload] => {
-                update_topic(topic_name, payload).await;
+                let _ = update_topic(topic_name, payload).await;
             },
             ["6", topic_name] | ["DELETE", topic_name] => {
-                delete_topic(topic_name).await;
+                let _ = delete_topic(topic_name).await;
             },
             ["7"] | ["multicast", "broker", "discovery"] => {
                 multicast_broker_discovery().await;

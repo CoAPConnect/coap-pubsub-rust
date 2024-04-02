@@ -1,6 +1,29 @@
 use std::net::SocketAddr;
 use std::collections::HashMap;
 use rand::Rng;
+
+
+///Generate random len 6 String consisting of numbers and/or letters as the uri. 2,2 billion possibilities
+///Currently doesn't check for possible same uris!! TODO
+fn generate_uri() -> String {
+    let mut rng = rand::thread_rng();
+
+    let random_string: String = (0..6)
+        .map(|_| {
+            let choice = rng.gen_range(0..36);
+            if choice < 10 {
+                // Generate a digit
+                (choice + b'0') as char
+            } else {
+                // Generate a letter
+                (choice - 10 + b'a') as char
+            }
+        })
+        .collect();
+    random_string
+}
+
+
 ///Topic resource as struct and its implemented methods.
 ///
 ///Fields are based on IETF draft <https://www.ietf.org/archive/id/draft-ietf-core-coap-pubsub-13.html>
@@ -28,8 +51,10 @@ pub struct Topic {
     pub max_subscribers: u32,
     /// The amount of time in seconds between each observer check, removing uninterested observers
     pub observe_check: u32,
-    /// KAVAN TEST data resource as part of topic
+    /// Data resource as part of topic
     pub data_resource: DataResource,
+    /// State of the topic: half-created of fully created bool
+    pub half_created: bool,
 }
 
 ///Topic implementation.
@@ -42,14 +67,15 @@ impl Topic {
         Topic {
             topic_name,
             resource_type,
-            topic_uri: Self::generate_uri(),
-            topic_data: Self::generate_uri(),
+            topic_uri: generate_uri(),
+            topic_data: generate_uri(),
             media_type: String::new(),
             topic_type: String::new(),
             expiration_date: String::new(),
             max_subscribers: u32::MAX,
             observe_check: 86400,
-            data_resource: DataResource::default(),
+            data_resource: DataResource::new(),
+            half_created: true,
         }
     }
 
@@ -137,25 +163,7 @@ impl Topic {
     pub fn get_observe_check(&self) -> u32 {
         self.observe_check
     }
-    ///Generate random len 6 String consisting of numbers and/or letters as the uri. 2,2 billion possibilities
-    ///Currently doesn't check for possible same uris!! TODO
-    fn generate_uri() -> String {
-        let mut rng = rand::thread_rng();
 
-        let random_string: String = (0..6)
-            .map(|_| {
-                let choice = rng.gen_range(0..36);
-                if choice < 10 {
-                    // Generate a digit
-                    (choice + b'0') as char
-                } else {
-                    // Generate a letter
-                    (choice - 10 + b'a') as char
-                }
-            })
-            .collect();
-        random_string
-    }
 }
 ///Topic collection as struct
 pub struct TopicCollection {
@@ -253,7 +261,17 @@ impl TopicCollection {
     pub fn find_topic_by_uri(&self, topic_uri: &str) -> Option<&Topic> {
         self.topics.get(topic_uri)
     }
-
+  
+    /// Find a topic in the collection by its topic_data URI
+    pub fn find_topic_by_data_uri(&self, topic_data_uri: &str) -> Option<&Topic> {
+        self.topics.values().find(|topic| topic.get_topic_data() == topic_data_uri)
+    }
+  
+    //Find a topic in the collection by its topic_data URI and return it as mutable
+    pub fn find_topic_by_data_uri_mut(&mut self, topic_data_uri: &str) -> Option<&mut Topic> {
+        self.topics.values_mut().find(|topic| topic.get_dr().get_data_uri() == topic_data_uri)
+    }
+  
     /// Finds a topic in the topic collection by its URI and returns it as mutable
     pub fn find_topic_by_uri_mut(&mut self, topic_uri: &str) -> Option<&mut Topic> {
         self.topics.get_mut(topic_uri)
@@ -281,17 +299,17 @@ pub struct DataResource {
     data_uri: String,
     parent_topic_uri: String,
     resource_type: String,
-    subscibers: Vec<SocketAddr>,
+    subscribers: Vec<SocketAddr>,
     data: String,
 }
 
 impl DataResource {
-    pub fn new(data_uri: String, parent_topic_uri: String) -> Self {
+    pub fn new() -> Self {
         DataResource {
-            data_uri,
-            parent_topic_uri,
+            data_uri: generate_uri(),
+            parent_topic_uri: String::from("yolo"),
             resource_type: String::from("core.ps.data"),
-            subscibers: Vec::new(),
+            subscribers: Vec::new(),
             data: String::new(),
         }
     //Getters and setters
@@ -306,7 +324,7 @@ impl DataResource {
         &self.resource_type
     }
     pub fn get_subscribers(&self) -> &Vec<SocketAddr> {
-        &self.subscibers
+        &self.subscribers
     }
     pub fn get_data(&self) -> &String {
         &self.data
@@ -321,16 +339,16 @@ impl DataResource {
         self.resource_type = resource_type;
     }
     pub fn set_subscribers(&mut self, subscribers: Vec<SocketAddr>) {
-        self.subscibers = subscribers;
+        self.subscribers = subscribers;
     }
     pub fn set_data(&mut self, data: String) {
         self.data = data;
     }
     //Adding and removing subscribers
     pub fn add_subscriber(&mut self, subscriber: SocketAddr) {
-        self.subscibers.push(subscriber);
+        self.subscribers.push(subscriber);
     }
     pub fn remove_subscriber(&mut self, subscriber: SocketAddr) {
-        self.subscibers.retain(|s| s != &subscriber);
+        self.subscribers.retain(|s| s != &subscriber);
     }
 }

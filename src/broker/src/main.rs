@@ -2,6 +2,7 @@ use coap::server::{Listener, UdpCoapListener};
 use coap_lite::link_format::LinkFormatWrite;
 use coap_lite::CoapResponse;
 use coap_lite::{CoapRequest, ResponseType, RequestType as Method};
+use coap_lite::Message;
 use coap::Server;
 use resource::DataResource;
 use socket2::{Domain, Socket, Type};
@@ -180,6 +181,9 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         },
         [topic, "unsubscribe"] => {
             handle_subscription(req, topic, req.source.unwrap(),SubscriptionAction::Unsubscribe);
+        },
+        ["ps", "data", topic_data_uri] => {
+            handle_get_latest_data(req, topic_data_uri);
         },
         _ => {
             // Handle invalid or unrecognized paths
@@ -361,6 +365,41 @@ fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_uri: &str, local_addr: 
             notify_client(coap_lite::ResponseType::Deleted, message, "Topic deleted succesfully");
             println!("{} deleted {}", local_addr.to_string(), topic_uri);
         }
+}
+
+
+
+fn handle_get_latest_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &str) {
+    // Lock the mutex to access the topic collection
+    let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+
+    let topic_collection_ref = Arc::get_mut(&mut locked_topic_collection).unwrap(); // Lock the topic map for safe access
+
+    // Find the topic by its data URI
+    if let Some(topic) = topic_collection_ref.find_topic_by_data_uri_mut(topic_data_uri) {
+        // Check if the topic is fully created
+        if topic.half_created {
+            // Topic is not in fully created state, return 4.04 (Not Found)
+            if let Some(ref mut message) = req.response {
+                message.set_status(coap_lite::ResponseType::NotFound);
+                message.message.payload = b"Topic data not found".to_vec();
+            }
+        } else {
+            // Topic is fully created, return the latest data
+            let data = topic.get_data_resource().get_data().clone(); // Assuming get_data() returns the latest data
+            if let Some(ref mut message) = req.response {
+                message.set_status(coap_lite::ResponseType::Content);
+                message.message.payload = data.into_bytes().to_vec();
+                message.message.set_content_format(coap_lite::ContentFormat::ApplicationJSON);
+            }
+        }
+    } else {
+        // Topic not found, return 4.04 (Not Found)
+        if let Some(ref mut message) = req.response {
+            message.set_status(coap_lite::ResponseType::NotFound);
+            message.message.payload = b"Topic not found".to_vec();
+        }
+    }
 }
 
 /// Initializes 3 topics to topic collection with names "topic1, topic2 & topic3"

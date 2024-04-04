@@ -2,7 +2,7 @@ use coap::server::{Listener, UdpCoapListener};
 use coap_lite::link_format::LinkFormatWrite;
 use coap_lite::CoapResponse;
 use coap_lite::{CoapRequest, ResponseType, RequestType as Method};
-use coap_lite::Message;
+//use coap_lite::Message;
 use coap::Server;
 use resource::DataResource;
 use socket2::{Domain, Socket, Type};

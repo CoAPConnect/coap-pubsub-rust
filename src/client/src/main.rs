@@ -1,6 +1,7 @@
 use coap::UdpCoAPClient;
 use coap_lite::link_format::LinkFormatWrite;
 use coap_lite::{CoapRequest, CoapResponse, Packet, RequestType as Method};
+
 use std::io::{self, Write};
 use std::error::Error;
 use std::io::{ErrorKind, Error as IoError};
@@ -38,6 +39,7 @@ async fn handle_command() {
         println!("8. multicast broker discovery uri query");
         println!("9. broker discovery");
         println!("10. broker discovery uri query");
+        println!("11. read latest data");
         println!("");
 
         io::stdout().flush().unwrap();
@@ -76,6 +78,9 @@ async fn handle_command() {
             },
             ["10"] | ["broker", "discovery", "uri", "query"] => {
                 broker_discovery_uri_query().await;
+            },
+            ["11", topic_data] | ["read", "latest", "data", topic_data] => {
+                let _ = read_latest_topic_data(topic_data).await;
             },
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
         }
@@ -388,6 +393,27 @@ async fn create_topic(topic_name: &str) {
         },
         Err(e) => {
             println!("Error creating topic: {}", e);
+        }
+    }
+}
+
+//let url = "coap://".to_owned()+GLOBAL_URL+"/ps"; 
+    
+// Read latest topic data
+async fn read_latest_topic_data(topic_data: &str) -> Result<(), Box<dyn Error>> {
+    let topic_data_uri = format!("/ps/data/{}", topic_data);
+    let url = format!("coap://{}{}", GLOBAL_URL, topic_data_uri);//let url = "coap://".to_owned()+GLOBAL_URL+"/ps/data"; 
+    println!("Client request: {}", url);
+
+    // Make a GET request to retrieve the latest topic data
+    match UdpCoAPClient::get(&url).await {
+        Ok(response) => {
+            server_reply(response);
+            Ok(())
+        }
+        Err(e) => {
+            server_error(&e);
+            Err(Box::new(e))
         }
     }
 }

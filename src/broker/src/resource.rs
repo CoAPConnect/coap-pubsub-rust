@@ -267,11 +267,11 @@ impl TopicCollection {
         self.topics.values().find(|topic| topic.get_topic_data() == topic_data_uri)
     }
   
-    //Find a topic in the collection by its topic_data URI and return it as mutable
+    //Find a topic in the collection by its data_uri and return mutable reference
     pub fn find_topic_by_data_uri_mut(&mut self, topic_data_uri: &str) -> Option<&mut Topic> {
-        self.topics.values_mut().find(|topic| topic.get_dr().get_data_uri() == topic_data_uri)
+        self.topics.values_mut().find(|topic| topic.get_topic_data() == topic_data_uri)
     }
-  
+
     /// Finds a topic in the topic collection by its URI and returns it as mutable
     pub fn find_topic_by_uri_mut(&mut self, topic_uri: &str) -> Option<&mut Topic> {
         self.topics.get_mut(topic_uri)

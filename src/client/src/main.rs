@@ -40,6 +40,7 @@ async fn handle_command() {
         println!("9. broker discovery");
         println!("10. broker discovery uri query");
         println!("11. read latest data");
+        println!("12. topic data discovery: GET <ResourceType>");
         println!("");
 
         io::stdout().flush().unwrap();
@@ -82,7 +83,28 @@ async fn handle_command() {
             ["11", topic_data] | ["read", "latest", "data", topic_data] => {
                 let _ = read_latest_topic_data(topic_data).await;
             },
+            ["12", resource_type] | ["GET", resource_type] => {
+                let _ = topic_data_discovery(resource_type).await;
+            },
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
+        }
+    }
+}
+
+async fn topic_data_discovery(resource_type: &str) -> Result<(), Box<dyn Error>> {
+    let topic_data_discovery_uri = format!("/ps/rt={}", resource_type);
+    let url = format!("coap://{}{}", GLOBAL_URL, topic_data_discovery_uri);
+
+    println!("Client request: {}", url);
+
+    match UdpCoAPClient::get(&url).await {
+        Ok(response) => {
+            server_reply(response);
+            Ok(())
+        }
+        Err(e) => {
+            server_error(&e);
+            Err(Box::new(e))
         }
     }
 }

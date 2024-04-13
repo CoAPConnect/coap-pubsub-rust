@@ -169,6 +169,8 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
     // Split the path into components for easier pattern matching
     let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
 
+    
+
     match components.as_slice() {
         ["discovery"] => {
             handle_discovery(req);
@@ -185,12 +187,60 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         ["ps", "data", topic_data_uri] => {
             handle_get_latest_data(req, topic_data_uri);
         },
+        ["ps", rt] if rt.starts_with("rt=") => {
+            let resource_type = rt.trim_start_matches("rt=");
+            handle_topic_data_discovery(req, resource_type);
+        },
         _ => {
             // Handle invalid or unrecognized paths
             handle_invalid_path(req);
         },
     }
 }
+
+fn handle_topic_data_discovery(req: &mut CoapRequest<SocketAddr>, requested_resource_type: &str) {
+    let locked_topic_collection = match TOPIC_COLLECTION_MUTEX.lock() {
+        Ok(lock) => lock,
+        Err(e) => {
+            println!("Failed to lock TOPIC_COLLECTION_MUTEX: {}", e);
+            return;
+        }
+    };
+
+    let topic_collection = &*locked_topic_collection;
+
+    let mut buffer = String::new();
+
+    let mut matched_topics_count = 0;
+
+    for topic in topic_collection.get_topics().values() {
+        let data_resource = topic.get_dr();
+        if data_resource.get_resource_type() == requested_resource_type {
+            matched_topics_count += 1;
+            buffer.push_str(&format!(
+                "\n</ps/{}>;rt=\"{}\";obs", 
+                topic.get_topic_data(),
+                requested_resource_type
+            ));
+        }
+    }
+
+    if buffer.ends_with(",\n") {
+        buffer.truncate(buffer.len() - 2);
+    }
+
+    if let Some(ref mut response) = req.response {
+        response.message.payload = buffer.as_bytes().to_vec();
+        response.set_status(coap_lite::ResponseType::Content);
+        response.message.set_content_format(coap_lite::ContentFormat::ApplicationLinkFormat);
+    } else {
+        println!("Failed to set response payload");
+    }
+}
+
+
+
+
 
 /// Handling put requests done to the broker
 async fn handle_put(req: &mut CoapRequest<SocketAddr>) {

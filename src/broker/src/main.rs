@@ -2,9 +2,7 @@ use coap::server::{Listener, UdpCoapListener};
 use coap_lite::link_format::LinkFormatWrite;
 use coap_lite::CoapResponse;
 use coap_lite::{CoapRequest, ResponseType, RequestType as Method};
-//use coap_lite::Message;
 use coap::Server;
-use resource::DataResource;
 use socket2::{Domain, Socket, Type};
 use tokio::runtime::Runtime;
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
@@ -322,7 +320,6 @@ fn create_topic(topic_name: &String, resource_type: &String, req: &mut coap_lite
 
 /// Handles post requests, i.e. topic creation and topic configuration updates
 fn handle_post(req:&mut Box<CoapRequest<SocketAddr>>){
-    // handle topic config etc
      // Extract payload from request
      let payload = String::from_utf8_lossy(&req.message.payload);
 
@@ -364,8 +361,6 @@ fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_uri: &str, local_addr: 
             println!("{} deleted {}", local_addr.to_string(), topic_uri);
         }
 }
-
-
 
 fn handle_get_latest_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &str) {
     // Lock the mutex to access the topic collection

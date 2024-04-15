@@ -2,9 +2,7 @@ use coap::server::{Listener, UdpCoapListener};
 use coap_lite::link_format::LinkFormatWrite;
 use coap_lite::CoapResponse;
 use coap_lite::{CoapRequest, ResponseType, RequestType as Method};
-//use coap_lite::Message;
 use coap::Server;
-use resource::DataResource;
 use socket2::{Domain, Socket, Type};
 use tokio::runtime::Runtime;
 use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
@@ -82,18 +80,18 @@ fn handle_discovery(req: &mut CoapRequest<SocketAddr>) {
 }
 
 /// Handles subscription and unsubscription to a topic
-fn handle_subscription(req: &mut CoapRequest<SocketAddr>, topic_name: &str, subscriber_addr: SocketAddr, action: SubscriptionAction) {
+fn handle_subscription(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &str, subscriber_addr: SocketAddr, action: SubscriptionAction) {
     println!("Beginning subscription handling");
 
     let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
     let topic_collection_ref = Arc::get_mut(&mut locked_topic_collection).unwrap(); // Lock the topic map for safe access
 
     // Check if the topic exists
-    if let Some(topic) = topic_collection_ref.find_topic_by_name_mut(topic_name) {
+    if let Some(topic) = topic_collection_ref.find_topic_by_data_uri_mut(topic_data_uri) {
         if topic.half_created {
             // Topic does not exist, prepare an error response and respond that the subscibe action failed
             if let Some(ref mut message) = req.response {
-            println!("{} tried to interact with {} but it failed because that topic is in half-created state", subscriber_addr.clone(), topic_name);
+            println!("{} tried to interact with {} but it failed because that topic is in half-created state", subscriber_addr.clone(), topic_data_uri);
             message.message.payload = b"Topic not found".to_vec();
             message.set_status(coap_lite::ResponseType::NotFound);
             message.message.set_observe_value(1);
@@ -106,13 +104,11 @@ fn handle_subscription(req: &mut CoapRequest<SocketAddr>, topic_name: &str, subs
             SubscriptionAction::Subscribe => {
                 // Topic exists, add subscriber
                 data.add_subscriber(subscriber_addr.clone());
-                println!("Current subscribers for {}: {:?}",topic_name.to_string(), data.get_subscribers());
-                println!("{} subscribed to {}", subscriber_addr.clone().to_string(), topic_name);
+                println!("Current subscribers for {}: {:?}",topic_data_uri.to_string(), data.get_subscribers());
+                println!("{} subscribed to data-uri {}", subscriber_addr.clone().to_string(), topic_data_uri);
 
                 // Prepare a success response
                 if let Some(ref mut message) = req.response {
-                    // payload message just for testing purposes
-                    //message.message.payload = b"Subscribed successfully".to_vec();
                     message.message.payload = data.get_data().clone().into_bytes().to_vec();
                     message.message.set_content_format(coap_lite::ContentFormat::try_from(110).unwrap());
                     message.message.set_observe_value(10001);
@@ -123,18 +119,18 @@ fn handle_subscription(req: &mut CoapRequest<SocketAddr>, topic_name: &str, subs
                 if data.get_subscribers().contains(&subscriber_addr) {
                     // Subscriber found, remove it
                     data.remove_subscriber(subscriber_addr.clone());
-                    println!("{} unsubscribed from {}", subscriber_addr.clone(), topic_name);
+                    println!("{} unsubscribed from {}", subscriber_addr.clone(), topic_data_uri);
 
                     // Prepare a success response
                     if let Some(ref mut message) = req.response {
                         message.message.payload = b"Unsubscribed successfully".to_vec();
                         message.message.set_observe_value(1);
                     }
-                } 
+                }
                 else {
                     // Subscriber not found, prepare an error response
                     if let Some(ref mut message) = req.response {
-                        println!("{} tried to unsubsrcibe to {} but it failed because client isn't subscribed to that topic", subscriber_addr.clone(), topic_name);
+                        println!("{} tried to unsubsrcibe to {} but it failed because client isn't subscribed to that topic", subscriber_addr.clone(), topic_data_uri);
                         message.message.payload = b"Subscriber not found".to_vec();
                         message.message.set_observe_value(1);
                     }
@@ -145,7 +141,7 @@ fn handle_subscription(req: &mut CoapRequest<SocketAddr>, topic_name: &str, subs
     else {
         // Topic does not exist, prepare an error response and respond that the subscibe action failed
         if let Some(ref mut message) = req.response {
-            println!("{} tried to unsubsrcibe to {} but it failed because no topic with that name exists", subscriber_addr.clone(), topic_name);
+            println!("{} tried to access uri {} but it failed because no topic_data with that uri exists", subscriber_addr.clone(), topic_data_uri);
             message.message.payload = b"Topic not found".to_vec();
             message.set_status(coap_lite::ResponseType::NotFound);
             message.message.set_observe_value(1);
@@ -203,7 +199,7 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
         return;
     }
 
-    let topic_name = components[0]; // Adjusted index
+    let topic_data_uri = components[0]; // Adjusted index
     let action = components[1]; // Adjusted index
 
     // Ensure the action is what we expect, e.g., "data"
@@ -212,12 +208,12 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
         return;
     }
 
-    update_topic_data(req, topic_name).await;
+    update_topic_data(req, topic_data_uri).await;
 }
 
 /// Updates data resource associated with a topic
-async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) {
-    println!("{}",topic_data);
+async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &str) {
+    println!("Updating topic-data uri: {}",topic_data_uri);
     let payload = match String::from_utf8(req.message.payload.clone()) {
         Ok(content) => content,
         Err(_) => {
@@ -234,7 +230,7 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
     // Obtain a mutable reference to the TopicCollection inside the Arc
     if let Some(topic_collection_ref) = Arc::get_mut(&mut locked_topic_collection) {
         // Attempt to find the topic by its topic_data
-        if let Some(ttopic) = topic_collection_ref.find_topic_by_uri_mut(topic_data) {
+        if let Some(ttopic) = topic_collection_ref.find_topic_by_data_uri_mut(topic_data_uri) {
             topic = ttopic;
             // Action is "data", update the topic's resource
             //If the topic has default data resource, make a new one and set it to the topic, and return 2.01 Created
@@ -269,7 +265,7 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data: &str) 
         let subscriber_clone = subscriber.clone();
         let resource = topic.get_dr().get_data().to_owned();
 
-        println!("{}",subscriber_clone);
+        println!("Informing {}",subscriber_clone);
         tokio::spawn(async move {
             if let Err(e) = inform_subscriber(subscriber_clone, coap_lite::ResponseType::Changed, &resource).await {
                 eprintln!("Failed to notify subscriber {}: {}", subscriber_clone, e);
@@ -324,7 +320,6 @@ fn create_topic(topic_name: &String, resource_type: &String, req: &mut coap_lite
 
 /// Handles post requests, i.e. topic creation and topic configuration updates
 fn handle_post(req:&mut Box<CoapRequest<SocketAddr>>){
-    // handle topic config etc
      // Extract payload from request
      let payload = String::from_utf8_lossy(&req.message.payload);
 
@@ -337,14 +332,14 @@ fn handle_post(req:&mut Box<CoapRequest<SocketAddr>>){
     create_topic(topic_name, resource_type, req);
 }
 
-/// Handles requests with method DELETE. 
+/// Handles requests with method DELETE.
 async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
     let path = req.get_path(); // Extract the URI path from the request
     let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
 
     match components.as_slice() {
-        [topic_name] => {
-            delete_topic(req, topic_name, req.source.unwrap());
+        [topic_uri] => {
+            delete_topic(req, topic_uri, req.source.unwrap());
         },
         _ => {
             // Handle invalid or unrecognized paths
@@ -366,8 +361,6 @@ fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_uri: &str, local_addr: 
             println!("{} deleted {}", local_addr.to_string(), topic_uri);
         }
 }
-
-
 
 fn handle_get_latest_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &str) {
     // Lock the mutex to access the topic collection
@@ -403,7 +396,7 @@ fn handle_get_latest_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &st
 }
 
 /// Initializes 3 topics to topic collection with names "topic1, topic2 & topic3"
-/// paths are 123, data/123 ... 456, data/456, ... 789, data/789
+/// uris/datauris are: 123/321 - 456/654 - 789/987
 fn initialize_topics() {
     // lock mutex
     let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
@@ -418,35 +411,28 @@ fn initialize_topics() {
     };
 
     let example_data = "{temperature: 20}";
-    let data_path1 = "data/123".to_string();
-    let data_path2 = "data/456".to_string();
-    let data_path3 = "data/789".to_string();
+    let data_uri1 = "321".to_string();
+    let data_uri2 = "654".to_string();
+    let data_uri3 = "987".to_string();
 
     let mut topic1 = Topic::new("topic1".to_string(), "core.ps.conf".to_string());
-    topic1.get_data_resource().set_data("123".to_string());
     topic1.set_topic_uri("123".to_string());
-    topic1.set_topic_data(data_path1.clone());
+    topic1.set_topic_data(data_uri1.clone());
     topic1.half_created = false;
+    topic1.get_data_resource().set_data(example_data.to_string());
+    topic1.get_data_resource().set_data_uri(data_uri1.to_string());
     let mut topic2 = Topic::new("topic2".to_string(), "core.ps.conf".to_string());
     topic2.set_topic_uri("456".to_string());
-    topic2.set_topic_data(data_path2.clone());
+    topic2.set_topic_data(data_uri2.clone());
     topic2.half_created = false;
+    topic2.get_data_resource().set_data(example_data.to_string());
+    topic2.get_data_resource().set_data_uri(data_uri2.to_string());
     let mut topic3 = Topic::new("topic3".to_string(), "core.ps.conf".to_string());
     topic3.set_topic_uri("789".to_string());
-    topic3.set_topic_data(data_path3.clone());
+    topic3.set_topic_data(data_uri3.clone());
     topic3.half_created = false;
-
-    let mut data1 = DataResource::new();
-    data1.set_data(example_data.to_string());
-    //topic_collection.set_data(data_path1, data1);
-
-    let mut data2 = DataResource::new();
-    data2.set_data(example_data.to_string());
-    //topic_collection.set_data(data_path2.clone(), data2);
-
-    let mut data3 = DataResource::new();
-    data3.set_data(example_data.to_string());
-    //topic_collection.set_data(data_path3.clone(), data3);
+    topic3.get_data_resource().set_data(example_data.to_string());
+    topic3.get_data_resource().set_data_uri(data_uri3.to_string());
 
     topic_collection.add_topic(topic1);
     topic_collection.add_topic(topic2);

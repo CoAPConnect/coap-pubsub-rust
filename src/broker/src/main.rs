@@ -2,7 +2,7 @@ use coap::server::{Listener, UdpCoapListener};
 use coap_lite::link_format::LinkFormatWrite;
 use coap_lite::CoapResponse;
 use coap_lite::{CoapRequest, ResponseType, RequestType as Method};
-//use coap_lite::Message;
+use coap_lite::ContentFormat;
 use coap::Server;
 use resource::DataResource;
 use socket2::{Domain, Socket, Type};
@@ -185,11 +185,42 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         ["ps", "data", topic_data_uri] => {
             handle_get_latest_data(req, topic_data_uri);
         },
+        [".well-known", "core"] | [".well-known", "core?rt=core.ps.conf"] => {
+            handle_topic_configuration_discovery(req);
+        }
         _ => {
             // Handle invalid or unrecognized paths
             handle_invalid_path(req);
         },
     }
+}
+
+/// Handles topic-configuration discovery of core.ps.conf, returns 
+fn handle_topic_configuration_discovery(req: &mut CoapRequest<SocketAddr>) {
+    // Lock the mutex to access the topic_collection
+    let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+    // Accessing the TopicCollection from the mutex guard
+    let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
+
+    // Iterate through topics and generate links for those with resource type "core.ps.conf"
+    let mut links = String::new();
+    for (uri, topic) in topic_collection_ref.get_topics() {
+        if topic.resource_type == "core.ps.conf" {
+            let link = format!("</{}>;rt=\"core.ps.conf\"", uri);
+            links.push_str(&link);
+            links.push(',');
+        }
+    }
+    links.pop(); // Remove the trailing comma
+
+    // Construct the CoAP response with the link format payload
+    let mut response = req.response.take().unwrap();
+    response.set_status(ResponseType::Content);
+    response.message.set_content_format(ContentFormat::ApplicationLinkFormat);
+    response.message.payload = links.into_bytes();
+
+    // Send the response back to the client
+    req.response = Some(response);
 }
 
 /// Handling put requests done to the broker

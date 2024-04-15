@@ -30,16 +30,16 @@ async fn handle_command() {
         println!("");
         println!("Enter command number:");
         println!("1. topic discovery");
-        println!("2. subscribe <TopicURI>");
-        println!("3. unsubscribe <TopicURI>");
+        println!("2. subscribe <Topic_data_URI>");
+        println!("3. unsubscribe <Topic_data_URI>");
         println!("4. create topic <TopicName>");
-        println!("5. update topic data: PUT <TopicURI> <Payload>");
+        println!("5. update topic data: PUT <Topic_data_URI> <Payload>");
         println!("6. delete topic configuration: DELETE <TopicURI>");
         println!("7. multicast broker discovery");
         println!("8. multicast broker discovery uri query");
         println!("9. broker discovery");
         println!("10. broker discovery uri query");
-        println!("11. read latest data");
+        println!("11. read latest data: <Topic_data_URI>");
         println!("");
 
         io::stdout().flush().unwrap();

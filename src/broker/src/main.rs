@@ -169,13 +169,11 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
     // Split the path into components for easier pattern matching
     let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
 
-    
-
     match components.as_slice() {
         ["discovery"] => {
             handle_discovery(req);
         },
-        [".well-known", "core"] | [".well-known", "core?rt=core.ps"] => {
+        [".well-known", "core?rt=core.ps"] => {
             handle_broker_discovery(req);
         },
         [topic, "subscribe"] => {
@@ -187,10 +185,9 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         ["ps", "data", topic_data_uri] => {
             handle_get_latest_data(req, topic_data_uri);
         },
-        ["ps", rt] if rt.starts_with("rt=") => {
-            let resource_type = rt.trim_start_matches("rt=");
-            handle_topic_data_discovery(req, resource_type);
-        },
+        [".well-known", "core?rt=core.ps.data"] => {
+            handle_topic_data_discovery(req);
+        }
         _ => {
             // Handle invalid or unrecognized paths
             handle_invalid_path(req);
@@ -198,7 +195,9 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
     }
 }
 
-fn handle_topic_data_discovery(req: &mut CoapRequest<SocketAddr>, requested_resource_type: &str) {
+fn handle_topic_data_discovery(req: &mut CoapRequest<SocketAddr>) {
+    println!("Handling topic data discovery");
+
     let locked_topic_collection = match TOPIC_COLLECTION_MUTEX.lock() {
         Ok(lock) => lock,
         Err(e) => {
@@ -210,23 +209,15 @@ fn handle_topic_data_discovery(req: &mut CoapRequest<SocketAddr>, requested_reso
     let topic_collection = &*locked_topic_collection;
 
     let mut buffer = String::new();
-
-    let mut matched_topics_count = 0;
+    let mut write = LinkFormatWrite::new(&mut buffer);
+    write.set_add_newlines(true);
 
     for topic in topic_collection.get_topics().values() {
         let data_resource = topic.get_dr();
-        if data_resource.get_resource_type() == requested_resource_type {
-            matched_topics_count += 1;
-            buffer.push_str(&format!(
-                "\n</ps/{}>;rt=\"{}\";obs", 
-                topic.get_topic_data(),
-                requested_resource_type
-            ));
+        if data_resource.get_resource_type() == "core.ps.data" {
+            write.link(&format!("/ps/{}", topic.get_topic_data()))
+                 .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps.data");
         }
-    }
-
-    if buffer.ends_with(",\n") {
-        buffer.truncate(buffer.len() - 2);
     }
 
     if let Some(ref mut response) = req.response {
@@ -237,6 +228,7 @@ fn handle_topic_data_discovery(req: &mut CoapRequest<SocketAddr>, requested_reso
         println!("Failed to set response payload");
     }
 }
+
 
 
 

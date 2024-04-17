@@ -252,7 +252,7 @@ impl TopicCollection {
         self.topics.insert(topic.get_topic_uri().to_string(), topic);
     }
 
-    /// Removes a topic from the topic collection by its name.
+    /// Removes a topic from the topic collection by its uri.
     pub fn remove_topic(&mut self, topic_uri: &str) {
         self.topics.remove(topic_uri);
     }

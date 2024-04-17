@@ -2,7 +2,7 @@
 
 This is an implementation of a simple CoAP pubsub broker and client for testing. Included also is an implementation of required resource types. The implementation is done according to the IETF draft [A publish-subscribe architecture for the Constrained Application Protocol (CoAP) ](https://datatracker.ietf.org/doc/draft-ietf-core-coap-pubsub/) version 13.
 
-This project was a part of the Software Engineering project course at Tampere University.
+This project was a part of the Software Engineering project course at Tampere University. This implementation is heavily influenced by the Python aiocoap implementation: [https://github.com/jaimejim/aiocoap-pubsub-broker/](https://github.com/jaimejim/aiocoap-pubsub-broker/)
 
 # Installation
 
@@ -23,6 +23,7 @@ cd path_to_src/client && cargo run
 ```
 
 The client terminal gives an interface to test the broker with. You can optionally test the broker with any other working CoAP client.
+<!---
 //TO DO WRITE MORE ON USAGE
 
 # Resource
@@ -38,3 +39,4 @@ our names, tuni
 // - [ ] top level
 //  - [ ] mid level
 //  - [x] midlevel
+--->

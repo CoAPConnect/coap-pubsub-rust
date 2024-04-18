@@ -39,7 +39,8 @@ async fn handle_command() {
         println!("8. multicast broker discovery uri query");
         println!("9. broker discovery");
         println!("10. broker discovery uri query");
-        println!("11. read latest data: <Topic_data_URI>");
+        println!("11. read latest data");
+        println!("13. topic-data discovery");
         println!("");
 
         io::stdout().flush().unwrap();
@@ -82,7 +83,29 @@ async fn handle_command() {
             ["11", topic_data] | ["read", "latest", "data", topic_data] => {
                 let _ = read_latest_topic_data(topic_data).await;
             },
+            ["13"] | ["topic", "data", "discovery"] => {
+                let _ = topic_data_discovery().await;
+            },
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
+        }
+    }
+}
+
+async fn topic_data_discovery() {
+    println!("Topic data discovery start");
+    let addr = GLOBAL_URL;
+    let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
+    let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
+    request.set_path(".well-known/core?rt=core.ps.data");
+
+    let response = UdpCoAPClient::perform_request(&mut client, request).await.unwrap();
+    let pay = String::from_utf8(response.message.payload);
+    match pay {
+        Ok(pay) => {
+            println!("Response: {}", pay);
+        }
+        Err(err) => {
+            println!("Error converting payload to string: {}", err);
         }
     }
 }

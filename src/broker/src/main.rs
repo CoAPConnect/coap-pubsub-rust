@@ -169,7 +169,7 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         ["discovery"] => {
             handle_discovery(req);
         },
-        [".well-known", "core"] | [".well-known", "core?rt=core.ps"] => {
+        [".well-known", "core?rt=core.ps"] => {
             handle_broker_discovery(req);
         },
         [topic, "subscribe"] => {
@@ -181,12 +181,54 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         ["ps", "data", topic_data_uri] => {
             handle_get_latest_data(req, topic_data_uri);
         },
+        [".well-known", "core?rt=core.ps.data"] => {
+            handle_topic_data_discovery(req);
+        }
         _ => {
             // Handle invalid or unrecognized paths
             handle_invalid_path(req);
         },
     }
 }
+
+fn handle_topic_data_discovery(req: &mut CoapRequest<SocketAddr>) {
+    println!("Handling topic data discovery");
+
+    let locked_topic_collection = match TOPIC_COLLECTION_MUTEX.lock() {
+        Ok(lock) => lock,
+        Err(e) => {
+            println!("Failed to lock TOPIC_COLLECTION_MUTEX: {}", e);
+            return;
+        }
+    };
+
+    let topic_collection = &*locked_topic_collection;
+
+    let mut buffer = String::new();
+    let mut write = LinkFormatWrite::new(&mut buffer);
+    write.set_add_newlines(true);
+
+    for topic in topic_collection.get_topics().values() {
+        let data_resource = topic.get_dr();
+        if data_resource.get_resource_type() == "core.ps.data" {
+            write.link(&format!("/ps/{}", topic.get_topic_data()))
+                 .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps.data");
+        }
+    }
+
+    if let Some(ref mut response) = req.response {
+        response.message.payload = buffer.as_bytes().to_vec();
+        response.set_status(coap_lite::ResponseType::Content);
+        response.message.set_content_format(coap_lite::ContentFormat::ApplicationLinkFormat);
+    } else {
+        println!("Failed to set response payload");
+    }
+}
+
+
+
+
+
 
 /// Handling put requests done to the broker
 async fn handle_put(req: &mut CoapRequest<SocketAddr>) {

@@ -185,7 +185,7 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         ["ps", "data", topic_data_uri] => {
             handle_get_latest_data(req, topic_data_uri);
         },
-        [".well-known", "core"] | [".well-known", "core?rt=core.ps.conf"] => {
+        [".well-known", "core?rt=core.ps.conf"] => {
             handle_topic_configuration_discovery(req);
         }
         _ => {
@@ -197,30 +197,33 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
 
 /// Handles topic-configuration discovery of core.ps.conf, returns 
 fn handle_topic_configuration_discovery(req: &mut CoapRequest<SocketAddr>) {
+    println!("Handling topic configuration discovery");
+    
     // Lock the mutex to access the topic_collection
     let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
     // Accessing the TopicCollection from the mutex guard
-    let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
+    let topic_collection: &TopicCollection = &*locked_topic_collection;
 
-    // Iterate through topics and generate links for those with resource type "core.ps.conf"
-    let mut links = String::new();
-    for (uri, topic) in topic_collection_ref.get_topics() {
-        if topic.resource_type == "core.ps.conf" {
-            let link = format!("</{}>;rt=\"core.ps.conf\"", uri);
-            links.push_str(&link);
-            links.push(',');
+    let mut buffer = String::new();
+    let mut write = LinkFormatWrite::new(&mut buffer);
+    write.set_add_newlines(true);
+
+    for topic in topic_collection.get_topics().values() {
+        let data_resource = topic.get_dr();
+        if data_resource.get_resource_type() == "core.ps.conf" {
+            write.link(&format!("/ps/{}", topic.get_topic_data()))
+                 .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps.conf");
         }
     }
-    links.pop(); // Remove the trailing comma
 
-    // Construct the CoAP response with the link format payload
-    let mut response = req.response.take().unwrap();
-    response.set_status(ResponseType::Content);
-    response.message.set_content_format(ContentFormat::ApplicationLinkFormat);
-    response.message.payload = links.into_bytes();
-
-    // Send the response back to the client
-    req.response = Some(response);
+    // Set correct responsetypes and content formats in the response
+    if let Some(ref mut response) = req.response {
+        response.message.payload = buffer.as_bytes().to_vec();
+        response.set_status(coap_lite::ResponseType::Content);
+        response.message.set_content_format(coap_lite::ContentFormat::ApplicationLinkFormat);
+    } else {
+        println!("Failed to set response payload");
+    }
 }
 
 /// Handling put requests done to the broker

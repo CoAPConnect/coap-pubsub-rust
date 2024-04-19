@@ -422,18 +422,11 @@ async fn read_latest_topic_data(topic_data: &str) -> Result<(), Box<dyn Error>> 
 }
 
 async fn topic_configuration_discovery() {
-    println!("Topic configuration start");
+    println!("Topic configuration discovery start");
     let addr = GLOBAL_URL;
     let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
-    request.set_path(".well-known/core");
-
-    let mut buffer = String::new();
-    let mut write = LinkFormatWrite::new(&mut buffer);
-    write.link("")
-    .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps.conf");
-
-    request.message.payload = buffer.into_bytes().to_vec();
+    request.set_path(".well-known/core?rt=core.ps.conf");
 
     let response = UdpCoAPClient::perform_request(&mut client, request).await.unwrap();
     let pay = String::from_utf8(response.message.payload);

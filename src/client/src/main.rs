@@ -1,7 +1,6 @@
 use coap::UdpCoAPClient;
 use coap_lite::link_format::LinkFormatWrite;
 use coap_lite::{CoapRequest, CoapResponse, Packet, RequestType as Method};
-
 use std::io::{self, Write};
 use std::error::Error;
 use std::io::{ErrorKind, Error as IoError};
@@ -40,6 +39,7 @@ async fn handle_command() {
         println!("9. broker discovery");
         println!("10. broker discovery uri query");
         println!("11. read latest data");
+        println!("12. topic-configuration discovery");
         println!("13. topic-data discovery");
         println!("");
 
@@ -82,6 +82,9 @@ async fn handle_command() {
             },
             ["11", topic_data] | ["read", "latest", "data", topic_data] => {
                 let _ = read_latest_topic_data(topic_data).await;
+            },
+            ["12"] | ["topic", "configuration", "discovery"] => {
+                let _ = topic_configuration_discovery().await;
             },
             ["13"] | ["topic", "data", "discovery"] => {
                 let _ = topic_data_discovery().await;
@@ -439,4 +442,23 @@ async fn read_latest_topic_data(topic_data: &str) -> Result<(), Box<dyn Error>> 
             Err(Box::new(e))
         }
     }
+}
+
+async fn topic_configuration_discovery() {
+    println!("Topic configuration discovery start");
+    let addr = GLOBAL_URL;
+    let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
+    let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
+    request.set_path(".well-known/core?rt=core.ps.conf");
+
+    let response = UdpCoAPClient::perform_request(&mut client, request).await.unwrap();
+    let pay = String::from_utf8(response.message.payload);
+    match pay {
+        Ok(pay) => {
+            println!("Response: {}", pay);
+        }
+        Err(err) => {
+            println!("Error converting payload to string: {}", err);
+        }
+    }    
 }

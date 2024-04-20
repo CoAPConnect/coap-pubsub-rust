@@ -181,6 +181,9 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         ["ps", "data", topic_data_uri] => {
             handle_get_latest_data(req, topic_data_uri);
         },
+        [".well-known", "core?rt=core.ps.conf"] => {
+            handle_topic_configuration_discovery(req);
+        },
         [".well-known", "core?rt=core.ps.data"] => {
             handle_topic_data_discovery(req);
         }
@@ -191,6 +194,7 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
     }
 }
 
+/// Handles get request with rt="core.ps.data" and responds with link-format with topic data resource uris
 fn handle_topic_data_discovery(req: &mut CoapRequest<SocketAddr>) {
     println!("Handling topic data discovery");
 
@@ -225,10 +229,36 @@ fn handle_topic_data_discovery(req: &mut CoapRequest<SocketAddr>) {
     }
 }
 
+/// Handles topic-configuration discovery of core.ps.conf, returns link format with topic uris
+fn handle_topic_configuration_discovery(req: &mut CoapRequest<SocketAddr>) {
+    println!("Handling topic configuration discovery");
+    
+    // Lock the mutex to access the topic_collection
+    let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
+    // Accessing the TopicCollection from the mutex guard
+    let topic_collection: &TopicCollection = &*locked_topic_collection;
 
+    let mut buffer = String::new();
+    let mut write = LinkFormatWrite::new(&mut buffer);
+    write.set_add_newlines(true);
 
+    for topic in topic_collection.get_topics().values() {
+        if topic.get_resource_type() == "core.ps.conf" {
+            write.link(&format!("/ps/{}", topic.get_topic_uri()))
+                 .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps.conf")
+                 .attr(coap_lite::link_format::LINK_ATTR_CONTENT_FORMAT, "TBD");
+        }
+    }
 
-
+    // Set correct responsetypes and content formats in the response
+    if let Some(ref mut response) = req.response {
+        response.message.payload = buffer.as_bytes().to_vec();
+        response.set_status(coap_lite::ResponseType::Content);
+        response.message.set_content_format(coap_lite::ContentFormat::ApplicationLinkFormat);
+    } else {
+        println!("Failed to set response payload");
+    }
+}
 
 /// Handling put requests done to the broker
 async fn handle_put(req: &mut CoapRequest<SocketAddr>) {

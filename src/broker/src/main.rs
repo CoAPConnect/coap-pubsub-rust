@@ -209,10 +209,12 @@ fn handle_topic_configuration_discovery(req: &mut CoapRequest<SocketAddr>) {
     write.set_add_newlines(true);
 
     for topic in topic_collection.get_topics().values() {
-        let data_resource = topic.get_dr();
-        if data_resource.get_resource_type() == "core.ps.conf" {
-            write.link(&format!("/ps/{}", topic.get_topic_data()))
-                 .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps.conf");
+        //let data_resource = topic.get_dr();
+        //if data_resource.get_resource_type() == "core.ps.conf" {
+        if topic.get_resource_type() == "core.ps.conf" {
+            write.link(&format!("/ps/{}", topic.get_topic_uri()))
+                 .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps.conf")
+                 .attr(coap_lite::link_format::LINK_ATTR_CONTENT_FORMAT, "TBD");
         }
     }
 

@@ -29,10 +29,10 @@ async fn handle_command() {
         println!("");
         println!("Enter command number:");
         println!("1. topic discovery");
-        println!("2. subscribe <TopicName>");
-        println!("3. unsubscribe <TopicName>");
+        println!("2. subscribe <Topic_data_URI>");
+        println!("3. unsubscribe <Topic_data_URI>");
         println!("4. create topic <TopicName>");
-        println!("5. update topic data: PUT <TopicURI> <Payload>");
+        println!("5. update topic data: PUT <Topic_data_URI> <Payload>");
         println!("6. delete topic configuration: DELETE <TopicURI>");
         println!("7. multicast broker discovery");
         println!("8. multicast broker discovery uri query");
@@ -40,6 +40,7 @@ async fn handle_command() {
         println!("10. broker discovery uri query");
         println!("11. read latest data");
         println!("12. topic-configuration discovery");
+        println!("13. topic-data discovery");
         println!("");
 
         io::stdout().flush().unwrap();
@@ -52,17 +53,17 @@ async fn handle_command() {
             ["1"] | ["topic name discovery"] => {
                 discovery(&discovery_url).await;
             },
-            ["2", topic_name] | ["subscribe", topic_name] => {
-                let _ = subscription(topic_name, 0).await;
+            ["2", topic_data_uri] | ["subscribe", topic_data_uri] => {
+                let _ = subscription(topic_data_uri, 0).await;
             },
-            ["3", topic_name] | ["unsubscribe", topic_name] => {
-                let _ = subscription(topic_name, 1).await;
+            ["3", topic_data_uri] | ["unsubscribe", topic_data_uri] => {
+                let _ = subscription(topic_data_uri, 1).await;
             },
             ["4", topic_name] | ["create topic", topic_name]=>{
                 create_topic(topic_name).await;
             },
-            ["5", topic_name, payload] | ["PUT", topic_name, payload] => {
-                let _ = update_topic(topic_name, payload).await;
+            ["5", topic_data_uri, payload] | ["PUT", topic_data_uri, payload] => {
+                let _ = update_topic(topic_data_uri, payload).await;
             },
             ["6", topic_name] | ["DELETE", topic_name] => {
                 let _ = delete_topic(topic_name).await;
@@ -85,7 +86,29 @@ async fn handle_command() {
             ["12"] | ["topic", "configuration", "discovery"] => {
                 let _ = topic_configuration_discovery().await;
             },
+            ["13"] | ["topic", "data", "discovery"] => {
+                let _ = topic_data_discovery().await;
+            },
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
+        }
+    }
+}
+
+async fn topic_data_discovery() {
+    println!("Topic data discovery start");
+    let addr = GLOBAL_URL;
+    let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
+    let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
+    request.set_path(".well-known/core?rt=core.ps.data");
+
+    let response = UdpCoAPClient::perform_request(&mut client, request).await.unwrap();
+    let pay = String::from_utf8(response.message.payload);
+    match pay {
+        Ok(pay) => {
+            println!("Response: {}", pay);
+        }
+        Err(err) => {
+            println!("Error converting payload to string: {}", err);
         }
     }
 }
@@ -241,8 +264,8 @@ fn server_error(e: &IoError) {
 }
 
 
-async fn delete_topic(topic_name: &str) -> Result<(), Box<dyn Error>> {
-    let url = format!("{}/{}", "coap://".to_owned()+GLOBAL_URL,topic_name);
+async fn delete_topic(topic_uri: &str) -> Result<(), Box<dyn Error>> {
+    let url = format!("{}/{}", "coap://".to_owned()+GLOBAL_URL,topic_uri);
     println!("Client request: {}", url);
 
     match UdpCoAPClient::delete(&url).await {
@@ -257,8 +280,8 @@ async fn delete_topic(topic_name: &str) -> Result<(), Box<dyn Error>> {
     }
 }
 
-async fn update_topic(topic_name: &str, payload: &str) -> Result<(), Box<dyn Error>> {
-    let url = format!("{}/{}/data","coap://".to_owned()+GLOBAL_URL, topic_name);
+async fn update_topic(topic_data_uri: &str, payload: &str) -> Result<(), Box<dyn Error>> {
+    let url = format!("{}/{}/data","coap://".to_owned()+GLOBAL_URL, topic_data_uri);
     let data = payload.as_bytes().to_vec();
     println!("Client request: {}", url);
 
@@ -274,7 +297,7 @@ async fn update_topic(topic_name: &str, payload: &str) -> Result<(), Box<dyn Err
     }
 }
 
-async fn subscription(topic_name: &str, observe_value: u32) -> Result<(), Box<dyn Error>> {
+async fn subscription(topic_data_uri: &str, observe_value: u32) -> Result<(), Box<dyn Error>> {
 
     let listen_socket = {
         let mut ls = LISTENER_SOCKET.lock().unwrap();
@@ -292,8 +315,8 @@ async fn subscription(topic_name: &str, observe_value: u32) -> Result<(), Box<dy
 
     // Set the path to subscribe or unsubscribe based on the `observe_value` parameter
     let path = match observe_value {
-        0 => format!("/{}/subscribe", topic_name),
-        _ => format!("/{}/unsubscribe", topic_name),
+        0 => format!("/{}/subscribe", topic_data_uri),
+        _ => format!("/{}/unsubscribe", topic_data_uri),
     };
 
     request.set_path(&path);

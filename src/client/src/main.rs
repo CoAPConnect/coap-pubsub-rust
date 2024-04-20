@@ -1,5 +1,4 @@
 use coap::UdpCoAPClient;
-use coap_lite::link_format::LinkFormatWrite;
 use coap_lite::{CoapRequest, CoapResponse, Packet, RequestType as Method};
 use std::io::{self, Write};
 use std::error::Error;
@@ -35,12 +34,10 @@ async fn handle_command() {
         println!("5. update topic data: PUT <Topic_data_URI> <Payload>");
         println!("6. delete topic configuration: DELETE <TopicURI>");
         println!("7. multicast broker discovery");
-        println!("8. multicast broker discovery uri query");
-        println!("9. broker discovery");
-        println!("10. broker discovery uri query");
-        println!("11. read latest data");
-        println!("12. topic-configuration discovery");
-        println!("13. topic-data discovery");
+        println!("8. broker discovery");
+        println!("9. read latest data");
+        println!("10. topic-configuration discovery");
+        println!("11. topic-data discovery");
         println!("");
 
         io::stdout().flush().unwrap();
@@ -68,25 +65,19 @@ async fn handle_command() {
             ["6", topic_name] | ["DELETE", topic_name] => {
                 let _ = delete_topic(topic_name).await;
             },
-            ["7"] | ["multicast", "broker", "discovery"] => {
-                multicast_broker_discovery().await;
-            },
-            ["8"] | ["multicast", "broker", "discovery", "uri", "query"] => {
+            ["7"] | ["multicast", "broker", "discovery", "uri", "query"] => {
                 multicast_discovery_uri_query().await;
             },
-            ["9"] | ["broker", "discovery"] => {
-                broker_discovery().await;
-            },
-            ["10"] | ["broker", "discovery", "uri", "query"] => {
+            ["8"] | ["broker", "discovery", "uri", "query"] => {
                 broker_discovery_uri_query().await;
             },
-            ["11", topic_data] | ["read", "latest", "data", topic_data] => {
+            ["9", topic_data] | ["read", "latest", "data", topic_data] => {
                 let _ = read_latest_topic_data(topic_data).await;
             },
-            ["12"] | ["topic", "configuration", "discovery"] => {
+            ["10"] | ["topic", "configuration", "discovery"] => {
                 let _ = topic_configuration_discovery().await;
             },
-            ["13"] | ["topic", "data", "discovery"] => {
+            ["11"] | ["topic", "data", "discovery"] => {
                 let _ = topic_data_discovery().await;
             },
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
@@ -150,80 +141,6 @@ async fn multicast_discovery_uri_query(){
             }
         };
         println!("Response: {}", pay);
-    }
-}
-
-/// Multicast discovery using ipv4 port 5683 and ipv6 segment 0. Listens for answers for 1 second.
-async fn multicast_broker_discovery(){
-    let addr = "0.0.0.0:5683";
-    println!("Multicast attempt start");
-
-    let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
-
-    let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
-    request.set_path(".well-known/core");
-
-    let mut buffer = String::new();
-    let mut write = LinkFormatWrite::new(&mut buffer);
-    write.link("")
-    .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps");
-
-    request.message.payload = buffer.into_bytes().to_vec();
-
-    //segment is ipv6 segment for multicast, need to be called on all segments we want to use, but in our case ipv4 is used so "0" is enough for now
-    let segment: u8 = 0;
-    UdpCoAPClient::send_all_coap(&client, &request, segment).await.unwrap();
-
-    // listens for responses from multiple brokers for 1 second and then times out.
-    let start_time = std::time::Instant::now();
-    while start_time.elapsed().as_secs() < 1 {
-        let response = match client.receive_raw_response().await {
-            Ok(response) => response,
-            Err(err) => {
-                if err.kind() == std::io::ErrorKind::TimedOut {
-                    println!("No more responses received in 1s");
-                    break; // Exit the loop on timeout
-                }
-                println!("Error receiving response: {}", err);
-                break; // Exit the loop on error
-            }
-        };
-        
-        let pay = match String::from_utf8(response.message.payload) {
-            Ok(pay) => pay,
-            Err(err) => {
-                println!("Error converting payload to string: {}", err);
-                continue; // Skip to the next iteration on error
-            }
-        };
-        println!("Response: {}", pay);
-    }
-}
-
-/// Broker discovery using known broker address
-async fn broker_discovery(){
-    println!("Broker discovery start");
-    let addr = GLOBAL_URL;
-    let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
-    let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
-    request.set_path(".well-known/core");
-
-    let mut buffer = String::new();
-    let mut write = LinkFormatWrite::new(&mut buffer);
-    write.link("")
-    .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps");
-
-    request.message.payload = buffer.into_bytes().to_vec();
-
-    let response = UdpCoAPClient::perform_request(&mut client, request).await.unwrap();
-    let pay = String::from_utf8(response.message.payload);
-    match pay {
-        Ok(pay) => {
-            println!("Response: {}", pay);
-        }
-        Err(err) => {
-            println!("Error converting payload to string: {}", err);
-        }
     }
 }
 

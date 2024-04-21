@@ -23,7 +23,7 @@ use lazy_static::lazy_static;
 // let mut topic_collection_ref = Arc::get_mut(&mut locked_topic_collection)
 
 lazy_static! {
-    static ref TOPIC_COLLECTION_MUTEX: Mutex<Arc<TopicCollection>> = Mutex::new(Arc::new(TopicCollection::new("TopicCollection".to_string())));
+    static ref TOPIC_COLLECTION_MUTEX: Mutex<Arc<TopicCollection>> = Mutex::new(Arc::new(TopicCollection::new("ps".to_string())));
 }
 enum SubscriptionAction {
     Subscribe,
@@ -186,11 +186,45 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         },
         [".well-known", "core?rt=core.ps.data"] => {
             handle_topic_data_discovery(req);
+        },
+        [".well-known", "core?rt=core.ps.coll"] => {
+            handle_topic_collection_discovery(req);
         }
         _ => {
             // Handle invalid or unrecognized paths
             handle_invalid_path(req);
         },
+    }
+}
+
+/// Handles brokers topic collection discovery, responds with link-format containing currently hardcoded 1 topic collection
+fn handle_topic_collection_discovery(req: &mut CoapRequest<SocketAddr>) {
+    println!("Handling topic collection discovery");
+
+    let locked_topic_collection = match TOPIC_COLLECTION_MUTEX.lock() {
+        Ok(lock) => lock,
+        Err(e) => {
+            println!("Failed to lock TOPIC_COLLECTION_MUTEX: {}", e);
+            return;
+        }
+    };
+
+    let topic_collection = &*locked_topic_collection;
+    let mut buffer = String::new();
+    let mut write = LinkFormatWrite::new(&mut buffer);
+    write.set_add_newlines(true);
+
+    write.link(&format!("/{}", topic_collection.get_name()))
+    .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps.coll")
+    .attr(coap_lite::link_format::LINK_ATTR_CONTENT_FORMAT, "40");
+
+    if let Some(ref mut response) = req.response {
+        response.message.payload = buffer.as_bytes().to_vec();
+        response.set_status(coap_lite::ResponseType::Content);
+        response.message.set_content_format(coap_lite::ContentFormat::ApplicationLinkFormat);
+        println!("Topic collection discovery response sent succesfully")
+    } else {
+        println!("Failed to set response payload");
     }
 }
 

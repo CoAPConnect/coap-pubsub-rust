@@ -38,6 +38,7 @@ async fn handle_command() {
         println!("9. read latest data");
         println!("10. topic-configuration discovery");
         println!("11. topic-data discovery");
+        println!("12. topic collection discovery");
         println!("");
 
         io::stdout().flush().unwrap();
@@ -80,7 +81,30 @@ async fn handle_command() {
             ["11"] | ["topic", "data", "discovery"] => {
                 let _ = topic_data_discovery().await;
             },
+            ["12"] | ["topic", "collection", "discovery"] => {
+                let _ = topic_collection_discovery().await;
+            }
             _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
+        }
+    }
+}
+
+/// Performs simple GET request with resource type = core.ps.coll and prints out the response
+async fn topic_collection_discovery() {
+    println!("Topic collection discovery start");
+    let addr = GLOBAL_URL;
+    let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
+    let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
+    request.set_path(".well-known/core?rt=core.ps.coll");
+
+    let response = UdpCoAPClient::perform_request(&mut client, request).await.unwrap();
+    let pay = String::from_utf8(response.message.payload);
+    match pay {
+        Ok(pay) => {
+            println!("Response: {}", pay);
+        }
+        Err(err) => {
+            println!("Error converting payload to string: {}", err);
         }
     }
 }

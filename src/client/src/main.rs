@@ -109,6 +109,7 @@ async fn topic_collection_discovery() {
     }
 }
 
+/// Performs simple GET request with resource type = core.ps.data and prints out the response.
 async fn topic_data_discovery() {
     println!("Topic data discovery start");
     let addr = GLOBAL_URL;
@@ -196,6 +197,7 @@ fn server_reply(response: CoapResponse){
                 String::from_utf8(response.message.payload).unwrap()
             );
 }
+/// Function that handles formatting the server error in the case an error occurs. Prints the error message.
 fn server_error(e: &IoError) {
     match e.kind() {
         ErrorKind::WouldBlock => println!("Request timeout"), // Unix
@@ -204,7 +206,7 @@ fn server_error(e: &IoError) {
     }
 }
 
-
+/// Function that handles deleting a topic configuration. Sends a DELETE request to the server.
 async fn delete_topic(topic_uri: &str) -> Result<(), Box<dyn Error>> {
     let url = format!("{}/{}", "coap://".to_owned()+GLOBAL_URL,topic_uri);
     println!("Client request: {}", url);
@@ -220,7 +222,7 @@ async fn delete_topic(topic_uri: &str) -> Result<(), Box<dyn Error>> {
         }
     }
 }
-
+/// Function that handles updating a topic. Sends a PUT request to the server.
 async fn update_topic(topic_data_uri: &str, payload: &str) -> Result<(), Box<dyn Error>> {
     let url = format!("{}/{}/data","coap://".to_owned()+GLOBAL_URL, topic_data_uri);
     let data = payload.as_bytes().to_vec();
@@ -237,7 +239,8 @@ async fn update_topic(topic_data_uri: &str, payload: &str) -> Result<(), Box<dyn
         }
     }
 }
-
+/// Function that handles subscribing to a topic.
+/// Sends a GET request to the server wiuht the observe value set to 0 subscription and 1 for unsubscription.
 async fn subscription(topic_data_uri: &str, observe_value: u32) -> Result<(), Box<dyn Error>> {
 
     let listen_socket = {
@@ -323,7 +326,7 @@ async fn listen_for_messages(socket: Arc<UdpSocket>) {
     }
 }
 
-
+/// Function that handles the discovery of topics.
 async fn discovery(url: &str) {
 
     println!("Client request: {}", url);
@@ -344,7 +347,8 @@ async fn discovery(url: &str) {
         }
     }
 }
-
+/// Function that handles the creation of a topic. Name of the topic is mandatory parameter. 
+/// Sends a POST request to the server.
 async fn create_topic(topic_name: &str) {
     let url = "coap://".to_owned()+GLOBAL_URL+"/ps"; 
     let resource_type="core.ps.conf";
@@ -366,7 +370,7 @@ async fn create_topic(topic_name: &str) {
 
 //let url = "coap://".to_owned()+GLOBAL_URL+"/ps"; 
     
-// Read latest topic data
+/// Read latest topic data. Sends a GET request to the server.
 async fn read_latest_topic_data(topic_data: &str) -> Result<(), Box<dyn Error>> {
     let topic_data_uri = format!("/ps/data/{}", topic_data);
     let url = format!("coap://{}{}", GLOBAL_URL, topic_data_uri);//let url = "coap://".to_owned()+GLOBAL_URL+"/ps/data"; 
@@ -384,7 +388,7 @@ async fn read_latest_topic_data(topic_data: &str) -> Result<(), Box<dyn Error>> 
         }
     }
 }
-
+/// Topic configuration discovery.
 async fn topic_configuration_discovery() {
     println!("Topic configuration discovery start");
     let addr = GLOBAL_URL;

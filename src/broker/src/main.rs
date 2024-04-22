@@ -12,7 +12,6 @@ use resource::TopicCollection;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
-use std::collections::HashMap;
 
 // Topic Collection resource to store all topic-related data
 // Lock the mutex to access the topic_collection
@@ -60,36 +59,25 @@ fn handle_broker_discovery(req: &mut CoapRequest<SocketAddr>){
     response.message.payload = buffer.as_bytes().to_vec();
 }
 
-/// Topic name discovery - not an actual coap pubsub draft method
+/// Topic name discovery - not an actual coap pubsub draft method but very usable for testing purposes
 fn handle_discovery(req: &mut CoapRequest<SocketAddr>) {
-    println!("Handling topic name discovery");
+    println!("Handling topic name/uri/datauri discovery");
 
     // Lock the mutex to access the topic_collection
     let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
     // Accessing the TopicCollection from the mutex guard
     let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
 
+    // Collecting all topic names, topic uri's and data uri's to [name, (topic-uri, data-uri)] vector
     let topics = topic_collection_ref.get_topics();
-    let topic_list: Vec<String> = topics.values().map(|topic| topic.get_topic_name().to_owned()).collect();
-    let topic_uri_list: Vec<String> = topics.values().map(|topic| topic.get_topic_uri().to_owned()).collect();
-    let data_uri_list:   Vec<String> = topics.values().map(|topic| topic.get_dr().get_data_uri().to_owned()).collect();
-    let topics_data: Vec<(String, Vec<(String, String)>)> = topics.values().map(|topic| {
+    let topics_data: Vec<(String, (String, String))> = topics.values().map(|topic| {
         let topic_uri = topic.get_topic_uri().to_owned();
-        let data_uri = topic.get_dr().get_data_uri().to_owned();
+        let data_uri = topic.get_topic_data().to_owned();
         let topic_name = topic.get_topic_name().to_owned();
-        (topic_uri, vec![(data_uri, topic_name)])
+        (topic_name, ("topic:".to_owned() + &topic_uri, "data:".to_owned() + &data_uri))
     }).collect();
 
-    let mut topics_map: HashMap<String, Vec<String>> = HashMap::new();
-
-    for topic in topics.values() {
-        let topic_uri = topic.get_topic_uri().to_owned();
-        let topic_name = topic.get_topic_name().to_owned();
-        let data_uri = topic.get_dr().get_data_uri().to_owned();
-        topics_map.insert(topic_name, vec![topic_uri, data_uri]);
-    }
-    let topics_json = serde_json::to_string(&topics_map).unwrap();
-    let payload = json!(topics_map).to_string();
+    let payload = json!(topics_data).to_string();
     let payload_clone = payload.clone();
 
     if let Some(ref mut message) = req.response { 

@@ -27,7 +27,7 @@ async fn handle_command() {
     loop {
         println!("");
         println!("Enter command number:");
-        println!("1. topic discovery");
+        println!("1. topic name/uri/datauri discovery");
         println!("2. subscribe <Topic_data_URI>");
         println!("3. unsubscribe <Topic_data_URI>");
         println!("4. create topic <TopicName>");

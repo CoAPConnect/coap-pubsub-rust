@@ -4,6 +4,7 @@ use rand::Rng;
 
 
 ///Generate random len 6 String consisting of numbers and/or letters as the uri. 2,2 billion possibilities
+///This is used for generating random uris for topics and data resources.
 ///Currently doesn't check for possible same uris!! TODO
 fn generate_uri() -> String {
     let mut rng = rand::thread_rng();
@@ -24,14 +25,14 @@ fn generate_uri() -> String {
 }
 
 
-///Topic resource as struct and its implemented methods.
+///Topic resource as struct and its implemented methods. Represents a topic in the broker, that is, topic configuration and dataresource.
 ///
 ///Fields are based on IETF draft <https://www.ietf.org/archive/id/draft-ietf-core-coap-pubsub-13.html>
 ///Referenced 25.3.2024
 ///
 ///Mandatory fields for topic creation: topic_name, resource_type (only "core.ps.conf" accepted).
 ///Optional fields for topic creation: topic_uri, topic_data, media_type, topic_type, expiration_date, max_subscribers.
-/// Represents a topic in the broker.
+///
 pub struct Topic {
     /// The name of the topic.
     pub topic_name: String,
@@ -58,6 +59,7 @@ pub struct Topic {
 }
 
 ///Topic implementation.
+/// 
 ///Create a new mutable struct for an example:
 /// ```rust
 /// let topic = Topic::new("topic_name".to_string(), "core.ps.conf".to_string());
@@ -79,13 +81,15 @@ impl Topic {
         }
     }
 
-
+    /// Set the DataResource for the topic
     pub fn set_data_resource(&mut self, dr: DataResource){
         self.data_resource=dr;
     }
+    /// Get the DataResource for the topic as mutable reference
     pub fn get_data_resource(&mut self) -> &mut DataResource{
         &mut self.data_resource
     }
+    /// Get immutable reference to DataResource
     pub fn get_dr (&self) -> &DataResource{
         &self.data_resource
     }
@@ -165,7 +169,11 @@ impl Topic {
     }
 
 }
-///Topic collection as struct
+///Topic collection as struct. Represents a collection of topics in the broker.
+///
+///The topic collection is identified by its name.
+///The topics in the collection are stored in a hashmap with the topic_URI of the topic as the key.
+/// 
 pub struct TopicCollection {
     /// The name of the topic collection aka path for the collection "/name".
     name: String,
@@ -176,7 +184,12 @@ pub struct TopicCollection {
     /// Data for the topics with path/name String as key and value as String(json format)
     data: HashMap<String, DataResource>,
 }
-///Topic collection implementation.
+/// Topic collection implementation.
+/// 
+/// Create a new mutable struct for an example:
+/// ```rust
+/// let topic_collection = TopicCollection::new("topic_collection_name".to_string());
+/// ```
 impl TopicCollection {
     /// Creates a new topic collection with the specified name.
     pub fn new(name: String) -> Self {
@@ -294,15 +307,30 @@ impl TopicCollection {
         }
     }
 }
+/// DataResource struct and its implemented methods. Represents a data resource in the broker.
+/// 
+/// Data_uri is the same as hosting topic configuration's (aka Topic) topic_data.
+/// Data_resource hosts the data and holds vector of subscribers.
 #[derive(Default)]
 pub struct DataResource {
+    /// The URI of the data resource. Used for data publishing/retrieving and subscribing.
     data_uri: String,
+    /// The URI of the parent topic of the data resource.
     parent_topic_uri: String,
+    /// The type of the resource associated with the data resource.
     resource_type: String,
+    /// The subscribers of the data resource.
     subscribers: Vec<SocketAddr>,
+    /// The data of the data resource.
     data: String,
 }
-
+/// DataResource implementation.
+/// 
+/// Create a new mutable struct for an example:
+/// ```rust
+/// let data_resource = DataResource::new();
+/// ```
+/// 
 impl DataResource {
     pub fn new() -> Self {
         DataResource {
@@ -314,40 +342,51 @@ impl DataResource {
         }
     //Getters and setters
     }
+    /// Get the URI of the data resource.
     pub fn get_data_uri(&self) -> &str {
         &self.data_uri
     }
+    /// Get the URI of the howting parent topic of the data resource.
     pub fn get_parent_topic_uri(&self) -> &str {
         &self.parent_topic_uri
     }
+    /// Get the type of the resource associated with the data resource.
     pub fn get_resource_type(&self) -> &str {
         &self.resource_type
     }
+    /// Get the subscribers of the data resource.
     pub fn get_subscribers(&self) -> &Vec<SocketAddr> {
         &self.subscribers
     }
+    /// Get the data of the data resource.
     pub fn get_data(&self) -> &String {
         &self.data
     }
+    /// Set the URI of the data resource.
     pub fn set_data_uri(&mut self, data_uri: String) {
         self.data_uri = data_uri;
     }
+    /// Set the URI of the parent topic of the data resource.
     pub fn set_parent_topic_uri(&mut self, parent_topic_uri: String) {
         self.parent_topic_uri = parent_topic_uri;
     }
+    /// Set the type of the resource associated with the data resource.
     pub fn set_resource_type(&mut self, resource_type: String) {
         self.resource_type = resource_type;
     }
+    /// Set the subscribers of the data resource.
     pub fn set_subscribers(&mut self, subscribers: Vec<SocketAddr>) {
         self.subscribers = subscribers;
     }
+    /// Set the data of the data resource.
     pub fn set_data(&mut self, data: String) {
         self.data = data;
     }
-    //Adding and removing subscribers
+    /// Add a subscriber to the data resource.
     pub fn add_subscriber(&mut self, subscriber: SocketAddr) {
         self.subscribers.push(subscriber);
     }
+    /// Remove a subscriber from the data resource.
     pub fn remove_subscriber(&mut self, subscriber: SocketAddr) {
         self.subscribers.retain(|s| s != &subscriber);
     }

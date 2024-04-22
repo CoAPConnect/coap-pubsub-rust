@@ -25,6 +25,7 @@ use lazy_static::lazy_static;
 lazy_static! {
     static ref TOPIC_COLLECTION_MUTEX: Mutex<Arc<TopicCollection>> = Mutex::new(Arc::new(TopicCollection::new("ps".to_string())));
 }
+/// SubscriptionAction enum to differentiate between subscribe and unsubscribe actions.
 enum SubscriptionAction {
     Subscribe,
     Unsubscribe,
@@ -58,19 +59,25 @@ fn handle_broker_discovery(req: &mut CoapRequest<SocketAddr>){
     response.message.payload = buffer.as_bytes().to_vec();
 }
 
-/// Topic name discovery - not an actual coap pubsub draft method
+/// Topic name discovery - not an actual coap pubsub draft method but very usable for testing purposes
 fn handle_discovery(req: &mut CoapRequest<SocketAddr>) {
-    println!("Handling topic name discovery");
+    println!("Handling topic name/uri/datauri discovery");
 
     // Lock the mutex to access the topic_collection
     let locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
     // Accessing the TopicCollection from the mutex guard
     let topic_collection_ref: &TopicCollection = &*locked_topic_collection;
 
+    // Collecting all topic names, topic uri's and data uri's to [name, (topic-uri, data-uri)] vector
     let topics = topic_collection_ref.get_topics();
-    let topic_list: Vec<String> = topics.values().map(|topic| topic.get_topic_name().to_owned()).collect();
+    let topics_data: Vec<(String, (String, String))> = topics.values().map(|topic| {
+        let topic_uri = topic.get_topic_uri().to_owned();
+        let data_uri = topic.get_topic_data().to_owned();
+        let topic_name = topic.get_topic_name().to_owned();
+        (topic_name, ("topic:".to_owned() + &topic_uri, "data:".to_owned() + &data_uri))
+    }).collect();
 
-    let payload = json!({"topics": topic_list}).to_string();
+    let payload = json!(topics_data).to_string();
     let payload_clone = payload.clone();
 
     if let Some(ref mut message) = req.response { 
@@ -80,6 +87,11 @@ fn handle_discovery(req: &mut CoapRequest<SocketAddr>) {
 }
 
 /// Handles subscription and unsubscription to a topic
+/// 
+/// Returns a response with the appropriate status code and payload
+/// 
+/// - On success, the payload contains status code 2.05 (Content) and the data.
+/// - On failure, the payload contains status code 4.04 (Not Found). 
 fn handle_subscription(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &str, subscriber_addr: SocketAddr, action: SubscriptionAction) {
     println!("Beginning subscription handling");
 
@@ -149,6 +161,7 @@ fn handle_subscription(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &str, 
     }
 }
 
+/// A supporting function to handle invalid paths.
 fn handle_invalid_path(req: &CoapRequest<SocketAddr>) {
     // Handle unrecognized paths
     let path = req.get_path();
@@ -159,6 +172,15 @@ fn handle_invalid_path(req: &CoapRequest<SocketAddr>) {
     // Set an appropriate response indicating the error
 }
 
+/// Handles GET requests done to the broker, including:
+/// - Discovery of the broker
+/// - Discovery of topic collections
+/// - Discovery of topic data
+/// - Discovery of topic configurations
+/// - Subscription to a topic
+/// - Unsubscription from a topic
+/// - Retrieval of the latest data for a topic
+/// - Handling invalid or unvalid paths with handle_invalid_path
 fn handle_get(req: &mut CoapRequest<SocketAddr>) {
     let path = req.get_path(); // Extract the URI path from the request
 
@@ -318,6 +340,10 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
 }
 
 /// Updates data resource associated with a topic
+/// 
+/// - Returns 2.01 (Created) if the topic was created successfully.
+/// - Returns 2.04 (Changed) if the topic was updated successfully.
+/// - Returns 4.04 (Not Found) if the topic was not found.
 async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &str) {
     println!("Updating topic-data uri: {}",topic_data_uri);
     let payload = match String::from_utf8(req.message.payload.clone()) {
@@ -393,6 +419,7 @@ async fn update_topic_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &s
     }
 }
 
+/// Informs a subscriber of a change in the topic data.
 async fn inform_subscriber(addr: SocketAddr, response_type: ResponseType, resource: &str) -> Result<(), Box<dyn std::error::Error>> {
     let packet = coap_lite::Packet::new();
 
@@ -409,7 +436,9 @@ async fn inform_subscriber(addr: SocketAddr, response_type: ResponseType, resour
     Ok(())
 }
 
-/// Creates a new topic
+/// Creates a new topic based on name and resource type as arguments.
+/// 
+/// - Returns 2.01 (Created) if the topic was created successfully.
 fn create_topic(topic_name: &String, resource_type: &String, req: &mut coap_lite::CoapRequest<SocketAddr>) {
     let topic = Topic::new(topic_name.clone(), resource_type.clone());
     let topic_uri = topic.get_topic_uri();
@@ -424,7 +453,9 @@ fn create_topic(topic_name: &String, resource_type: &String, req: &mut coap_lite
     }
 }
 
-/// Handles post requests, i.e. topic creation and topic configuration updates
+/// Handles post requests, including:
+/// - Creation of a new topic (create_topic())
+/// - Invalid or unrecognized paths (handle_invalid_path())
 fn handle_post(req:&mut Box<CoapRequest<SocketAddr>>){
      // Extract payload from request
      let payload = String::from_utf8_lossy(&req.message.payload);
@@ -438,7 +469,9 @@ fn handle_post(req:&mut Box<CoapRequest<SocketAddr>>){
     create_topic(topic_name, resource_type, req);
 }
 
-/// Handles requests with method DELETE.
+/// Handles requests with method DELETE, including:
+/// - Deletion of a topic (delete_topic())
+/// - Invalid or unrecognized paths (handle_invalid_path())
 async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
     let path = req.get_path(); // Extract the URI path from the request
     let components: Vec<&str> = path.split('/').filter(|c| !c.is_empty()).collect();
@@ -453,7 +486,9 @@ async fn handle_delete(req: &mut CoapRequest<SocketAddr>) {
         },
     }
 }
-/// This function deletes a topic configuration as specified here: https://datatracker.ietf.org/doc/html/draft-ietf-core-coap-pubsub-13#name-deleting-a-topic-configurat
+/// Handles deletion of a topic
+/// 
+/// Returns 2.02 (Deleted) if the topic was found and deleted successfully
 // TO DO: all subscribers MUST be unsubscribed after this
 fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_uri: &str, local_addr: SocketAddr) {
     println!("Deleting topic: {}", topic_uri);
@@ -468,6 +503,11 @@ fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_uri: &str, local_addr: 
         }
 }
 
+/// Handles GET requests for the latest data of a topic.
+/// 
+/// - Returns 2.05 (Content) if the topic was found and the latest data was returned with data. Only possible for existing topics.
+/// that have been fully created, ie. published with data.
+/// - Returns 4.04 (Not Found) if the topic was not found, or in half-created state.
 fn handle_get_latest_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &str) {
     // Lock the mutex to access the topic collection
     let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();

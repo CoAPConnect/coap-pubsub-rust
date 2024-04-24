@@ -15,11 +15,11 @@ Clone the git repo locally
 Once you have cloned the repo, navigate to the src/broker file and run cargo run
 
 ```
-cd path_to_src/broker && cargo run
+cd path_to_folder/broker && cargo run
 ```
 Next, open a new terminal window and run the client
 ```
-cd path_to_src/client && cargo run
+cd path_to_folder/client && cargo run
 ```
 
 The client terminal gives an interface to test the broker with. You can optionally test the broker with any other working CoAP client.

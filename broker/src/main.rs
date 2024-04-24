@@ -50,7 +50,7 @@ fn handle_broker_discovery(req: &mut CoapRequest<SocketAddr>){
     // Create the linkformatted response containing the brokers address with rt=core.ps
     let mut buffer = String::new();
     let mut write = LinkFormatWrite::new(&mut buffer);
-    write.link("127.0.0.1:5683")
+    write.link("coap://127.0.0.1:5683")
     .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps");
 
     println!("Sending response: {}", buffer);
@@ -293,7 +293,7 @@ fn handle_topic_data_discovery(req: &mut CoapRequest<SocketAddr>) {
     for topic in topic_collection.get_topics().values() {
         let data_resource = topic.get_dr();
         if data_resource.get_resource_type() == "core.ps.data" {
-            write.link(&format!("/ps/{}", topic.get_topic_data()))
+            write.link(&format!("/ps/data/{}", topic.get_topic_data()))
                  .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps.data");
         }
     }
@@ -352,7 +352,6 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
     let collection = components[0];
     let uri = components[1];
     let topic_data_uri = components[2];
-    
 
     // Ensure the request uri is what we expect, e.g., ps/data/DATA-URI
     if uri != "data" || collection != "ps" {

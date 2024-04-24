@@ -132,7 +132,7 @@ async fn topic_data_discovery() {
 /// Multicast discovery using ipv4 port 5683 and ipv6 segment 0.
 async fn multicast_discovery_uri_query(){
     let addr = "0.0.0.0:5683";
-    println!("Multicast attempt start with uri query");
+    println!("Multicast attempt start with uri query, listening for responses for 1s");
 
     let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
 
@@ -240,7 +240,7 @@ async fn update_topic(topic_data_uri: &str, payload: &str) -> Result<(), Box<dyn
     }
 }
 /// Function that handles subscribing to a topic.
-/// Sends a GET request to the server wiuht the observe value set to 0 subscription and 1 for unsubscription.
+/// Sends a GET request to the server with the observe value set to 0 subscription and 1 for unsubscription.
 async fn subscription(topic_data_uri: &str, observe_value: u32) -> Result<(), Box<dyn Error>> {
 
     let listen_socket = {
@@ -252,16 +252,11 @@ async fn subscription(topic_data_uri: &str, observe_value: u32) -> Result<(), Bo
         ls.as_ref().unwrap().clone()
     };
 
-    //let local_addr = listen_socket.local_addr()?;
-
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
     request.set_method(Method::Get);
 
     // Set the path to subscribe or unsubscribe based on the `observe_value` parameter
-    let path = match observe_value {
-        0 => format!("/{}/subscribe", topic_data_uri),
-        _ => format!("/{}/unsubscribe", topic_data_uri),
-    };
+    let path = format!("ps/data/{}", topic_data_uri);
 
     request.set_path(&path);
     request.message.set_observe_value(observe_value);
@@ -269,12 +264,11 @@ async fn subscription(topic_data_uri: &str, observe_value: u32) -> Result<(), Bo
     let packet = request.message.to_bytes().unwrap();
     listen_socket.send_to(&packet[..], &GLOBAL_URL).await.expect("Could not send the data");
 
-    // starts listening to topic if observe is 0
-    //if observe_value == 0{
-        let _handle = tokio::spawn(async move {
-            listen_for_messages(listen_socket).await;
-        });
-    //}
+    // starts listening to topic, terminates if response doesn't have a observe value set
+    let _handle = tokio::spawn(async move {
+        listen_for_messages(listen_socket).await;
+    });
+
 
     return Ok(());
 }
@@ -367,13 +361,11 @@ async fn create_topic(topic_name: &str) {
         }
     }
 }
-
-//let url = "coap://".to_owned()+GLOBAL_URL+"/ps"; 
     
 /// Read latest topic data. Sends a GET request to the server.
 async fn read_latest_topic_data(topic_data: &str) -> Result<(), Box<dyn Error>> {
     let topic_data_uri = format!("/ps/data/{}", topic_data);
-    let url = format!("coap://{}{}", GLOBAL_URL, topic_data_uri);//let url = "coap://".to_owned()+GLOBAL_URL+"/ps/data"; 
+    let url = format!("coap://{}{}", GLOBAL_URL, topic_data_uri);
     println!("Client request: {}", url);
 
     // Make a GET request to retrieve the latest topic data

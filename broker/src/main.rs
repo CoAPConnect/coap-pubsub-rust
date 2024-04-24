@@ -194,14 +194,31 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         [".well-known", "core?rt=core.ps"] => {
             handle_broker_discovery(req);
         },
-        [topic, "subscribe"] => {
-            handle_subscription(req, topic, req.source.unwrap(),SubscriptionAction::Subscribe);
-        },
-        [topic, "unsubscribe"] => {
-            handle_subscription(req, topic, req.source.unwrap(),SubscriptionAction::Unsubscribe);
-        },
         ["ps", "data", topic_data_uri] => {
-            handle_get_latest_data(req, topic_data_uri);
+            if let Some(result) = req.message.get_observe_value() {
+                match result {
+                    Ok(value) => {
+                        // Handle value  0 aka subscribe
+                        if value == 0 {
+                            handle_subscription(req, topic_data_uri, req.source.unwrap(),SubscriptionAction::Subscribe);
+                        // Handle value 1 aka unsubscribe
+                        } if value == 1 {
+                            handle_subscription(req, topic_data_uri, req.source.unwrap(),SubscriptionAction::Unsubscribe);
+                        } else {
+                        // Request is erroneous
+                            handle_invalid_path(req);
+                        }
+                    
+                    }
+                    Err(_err) => {
+                        // Handle error when parsing the value
+                        handle_invalid_path(req);
+                    }
+                }
+            // no observe value -> a single read on topics latest data
+            } else {
+                handle_get_latest_data(req, topic_data_uri);
+            }
         },
         [".well-known", "core?rt=core.ps.conf"] => {
             handle_topic_configuration_discovery(req);
@@ -509,6 +526,7 @@ fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_uri: &str, local_addr: 
 /// that have been fully created, ie. published with data.
 /// - Returns 4.04 (Not Found) if the topic was not found, or in half-created state.
 fn handle_get_latest_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &str) {
+    println!("Handling get on topics latest data");
     // Lock the mutex to access the topic collection
     let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
 

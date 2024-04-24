@@ -201,23 +201,28 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
                         // Handle value  0 aka subscribe
                         if value == 0 {
                             handle_subscription(req, topic_data_uri, req.source.unwrap(),SubscriptionAction::Subscribe);
+                            return
                         // Handle value 1 aka unsubscribe
-                        } if value == 1 {
+                        } else if value == 1 {
                             handle_subscription(req, topic_data_uri, req.source.unwrap(),SubscriptionAction::Unsubscribe);
+                            return
                         } else {
                         // Request is erroneous
                             handle_invalid_path(req);
+                            return
                         }
                     
                     }
                     Err(_err) => {
                         // Handle error when parsing the value
                         handle_invalid_path(req);
+                        return
                     }
                 }
             // no observe value -> a single read on topics latest data
             } else {
                 handle_get_latest_data(req, topic_data_uri);
+                return
             }
         },
         [".well-known", "core?rt=core.ps.conf"] => {
@@ -338,18 +343,20 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
     let path_str = req.get_path();
     let components: Vec<&str> = path_str.split('/').filter(|s| !s.is_empty()).collect();
 
-    // Now expecting at least 2 components: "topicName" and "data"
-    if components.len() < 2 {
+    // Now expecting at least 3 components: collection, data, topic-data-uri
+    if components.len() < 3 {
         eprintln!("Invalid path format. Received: {}", path_str);
         return;
     }
 
-    let topic_data_uri = components[0]; // Adjusted index
-    let action = components[1]; // Adjusted index
+    let collection = components[0];
+    let uri = components[1];
+    let topic_data_uri = components[2];
+    
 
-    // Ensure the action is what we expect, e.g., "data"
-    if action != "data" {
-        eprintln!("Unsupported action: {}", action);
+    // Ensure the request uri is what we expect, e.g., ps/data/DATA-URI
+    if uri != "data" || collection != "ps" {
+        eprintln!("Unsupported path: {}", path_str);
         return;
     }
 
@@ -526,7 +533,7 @@ fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_uri: &str, local_addr: 
 /// that have been fully created, ie. published with data.
 /// - Returns 4.04 (Not Found) if the topic was not found, or in half-created state.
 fn handle_get_latest_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &str) {
-    println!("Handling get on topics latest data");
+    println!("Handling get request on topic's latest data");
     // Lock the mutex to access the topic collection
     let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
 

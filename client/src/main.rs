@@ -35,7 +35,7 @@ async fn handle_command() {
         println!("6. delete topic configuration: DELETE <TopicURI>");
         println!("7. multicast broker discovery");
         println!("8. broker discovery");
-        println!("9. read latest data");
+        println!("9. read latest data <Topic_data_URI>");
         println!("10. topic-configuration discovery");
         println!("11. topic-data discovery");
         println!("12. topic collection discovery");
@@ -84,7 +84,7 @@ async fn handle_command() {
             ["12"] | ["topic", "collection", "discovery"] => {
                 let _ = topic_collection_discovery().await;
             }
-            _ => println!("Invalid command. Please enter 'discovery' or 'subscribe <TopicName>'."),
+            _ => println!("Invalid command. Please enter one from the list of commands."),
         }
     }
 }
@@ -224,7 +224,7 @@ async fn delete_topic(topic_uri: &str) -> Result<(), Box<dyn Error>> {
 }
 /// Function that handles updating a topic. Sends a PUT request to the server.
 async fn update_topic(topic_data_uri: &str, payload: &str) -> Result<(), Box<dyn Error>> {
-    let url = format!("{}/{}/data","coap://".to_owned()+GLOBAL_URL, topic_data_uri);
+    let url = format!("{}/ps/data/{}","coap://".to_owned()+GLOBAL_URL, topic_data_uri);
     let data = payload.as_bytes().to_vec();
     println!("Client request: {}", url);
 

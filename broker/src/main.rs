@@ -50,7 +50,7 @@ fn handle_broker_discovery(req: &mut CoapRequest<SocketAddr>){
     // Create the linkformatted response containing the brokers address with rt=core.ps
     let mut buffer = String::new();
     let mut write = LinkFormatWrite::new(&mut buffer);
-    write.link("127.0.0.1:5683")
+    write.link("coap://127.0.0.1:5683")
     .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps");
 
     println!("Sending response: {}", buffer);
@@ -194,14 +194,36 @@ fn handle_get(req: &mut CoapRequest<SocketAddr>) {
         [".well-known", "core?rt=core.ps"] => {
             handle_broker_discovery(req);
         },
-        [topic, "subscribe"] => {
-            handle_subscription(req, topic, req.source.unwrap(),SubscriptionAction::Subscribe);
-        },
-        [topic, "unsubscribe"] => {
-            handle_subscription(req, topic, req.source.unwrap(),SubscriptionAction::Unsubscribe);
-        },
         ["ps", "data", topic_data_uri] => {
-            handle_get_latest_data(req, topic_data_uri);
+            if let Some(result) = req.message.get_observe_value() {
+                match result {
+                    Ok(value) => {
+                        // Handle value  0 aka subscribe
+                        if value == 0 {
+                            handle_subscription(req, topic_data_uri, req.source.unwrap(),SubscriptionAction::Subscribe);
+                            return
+                        // Handle value 1 aka unsubscribe
+                        } else if value == 1 {
+                            handle_subscription(req, topic_data_uri, req.source.unwrap(),SubscriptionAction::Unsubscribe);
+                            return
+                        } else {
+                        // Request is erroneous
+                            handle_invalid_path(req);
+                            return
+                        }
+                    
+                    }
+                    Err(_err) => {
+                        // Handle error when parsing the value
+                        handle_invalid_path(req);
+                        return
+                    }
+                }
+            // no observe value -> a single read on topics latest data
+            } else {
+                handle_get_latest_data(req, topic_data_uri);
+                return
+            }
         },
         [".well-known", "core?rt=core.ps.conf"] => {
             handle_topic_configuration_discovery(req);
@@ -271,7 +293,7 @@ fn handle_topic_data_discovery(req: &mut CoapRequest<SocketAddr>) {
     for topic in topic_collection.get_topics().values() {
         let data_resource = topic.get_dr();
         if data_resource.get_resource_type() == "core.ps.data" {
-            write.link(&format!("/ps/{}", topic.get_topic_data()))
+            write.link(&format!("/ps/data/{}", topic.get_topic_data()))
                  .attr(coap_lite::link_format::LINK_ATTR_RESOURCE_TYPE, "core.ps.data");
         }
     }
@@ -321,18 +343,19 @@ async fn handle_put(req: &mut CoapRequest<SocketAddr>) {
     let path_str = req.get_path();
     let components: Vec<&str> = path_str.split('/').filter(|s| !s.is_empty()).collect();
 
-    // Now expecting at least 2 components: "topicName" and "data"
-    if components.len() < 2 {
+    // Now expecting at least 3 components: collection, data, topic-data-uri
+    if components.len() < 3 {
         eprintln!("Invalid path format. Received: {}", path_str);
         return;
     }
 
-    let topic_data_uri = components[0]; // Adjusted index
-    let action = components[1]; // Adjusted index
+    let collection = components[0];
+    let uri = components[1];
+    let topic_data_uri = components[2];
 
-    // Ensure the action is what we expect, e.g., "data"
-    if action != "data" {
-        eprintln!("Unsupported action: {}", action);
+    // Ensure the request uri is what we expect, e.g., ps/data/DATA-URI
+    if uri != "data" || collection != "ps" {
+        eprintln!("Unsupported path: {}", path_str);
         return;
     }
 
@@ -509,6 +532,7 @@ fn delete_topic(req: &mut CoapRequest<SocketAddr>, topic_uri: &str, local_addr: 
 /// that have been fully created, ie. published with data.
 /// - Returns 4.04 (Not Found) if the topic was not found, or in half-created state.
 fn handle_get_latest_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &str) {
+    println!("Handling get request on topic's latest data");
     // Lock the mutex to access the topic collection
     let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
 

@@ -465,13 +465,20 @@ async fn inform_subscriber(addr: SocketAddr, response_type: ResponseType, resour
 fn create_topic(topic_name: &String, resource_type: &String, req: &mut coap_lite::CoapRequest<SocketAddr>) {
     let topic = Topic::new(topic_name.clone(), resource_type.clone());
     let topic_uri = topic.get_topic_uri();
+    let topic_data = topic.get_topic_data().to_owned();
+    let location = "ps/".to_string() + &topic_uri;
+    let data_location = "ps/data/".to_string() + &topic_data;
     let mut locked_topic_collection: std::sync::MutexGuard<'_, Arc<TopicCollection>> = TOPIC_COLLECTION_MUTEX.lock().unwrap();
     let mut topic_collection_ref = Arc::get_mut(&mut locked_topic_collection);
     topic_collection_ref.as_mut().unwrap().add_topic(topic);
-    println!("Topic '{}' with uri: {}, and of type '{}' added to the topic map.", topic_name, topic_uri, resource_type);
+    println!("Topic '{}' with uri: {}, data-uri: {}, and of type '{}' added to the topic map.", topic_name, topic_uri, topic_data, resource_type);
 
     if let Some(ref mut message) = req.response {
-        message.message.payload = b"Topic created succesfully".to_vec();
+        let payload = json!({"Location-Path": location,
+    "topic-name": topic_name,
+    "topic-data": data_location,
+    "resource-type": resource_type});
+        message.message.payload = payload.to_string().into_bytes().to_vec();
         message.set_status(coap_lite::ResponseType::Created);
     }
 }

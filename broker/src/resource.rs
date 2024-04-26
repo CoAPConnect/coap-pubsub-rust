@@ -66,20 +66,33 @@ pub struct Topic {
 /// ```
 impl Topic {
     pub fn new(topic_name: String, resource_type: String) -> Self {
+        let topic_uri = generate_uri();
+        let topic_data = generate_uri();
+        let data_resource = Self::generate_dataresource(&topic_uri, &topic_data);
+
         Topic {
             topic_name,
             resource_type,
-            topic_uri: generate_uri(),
-            topic_data: generate_uri(),
+            topic_uri: topic_uri,
+            topic_data: topic_data,
             media_type: String::new(),
             topic_type: String::new(),
             expiration_date: String::new(),
             max_subscribers: u32::MAX,
             observe_check: 86400,
-            data_resource: DataResource::new(),
+            data_resource: data_resource,
             half_created: true,
         }
     }
+
+    /// Generates DataResource for the topic with correct options
+    fn generate_dataresource(topic_uri: &String, topic_data: &String) -> DataResource {
+        let mut data = DataResource::new();
+        data.set_parent_topic_uri(topic_uri.to_owned());
+        data.set_data_uri(topic_data.to_owned());
+        return data;
+    }
+    
 
     /// Set the DataResource for the topic
     pub fn set_data_resource(&mut self, dr: DataResource){
@@ -93,8 +106,6 @@ impl Topic {
     pub fn get_dr (&self) -> &DataResource{
         &self.data_resource
     }
-
-
     ///Set the URI of the topic.
     pub fn set_topic_uri(&mut self, topic_uri: String) {
         self.topic_uri = topic_uri;

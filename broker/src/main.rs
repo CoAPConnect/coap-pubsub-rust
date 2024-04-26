@@ -565,6 +565,7 @@ fn handle_get_latest_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &st
     }
 }
 
+/* 
 /// Initializes 3 topics to topic collection with names "topic1, topic2 & topic3"
 /// uris/datauris are: 123/321 - 456/654 - 789/987
 fn initialize_topics() {
@@ -608,10 +609,12 @@ fn initialize_topics() {
     topic_collection.add_topic(topic2);
     topic_collection.add_topic(topic3);
 }
+*/
+
 
 /// server startup and handling requests is implemented in main 
 fn main() {
-    initialize_topics();
+    //initialize_topics();
     let addr = "127.0.0.1:5683";
     Runtime::new().unwrap().block_on(async move {
         // create socket2 socket and assign a random address to it, then join multicast group with it

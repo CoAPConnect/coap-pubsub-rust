@@ -465,13 +465,20 @@ async fn inform_subscriber(addr: SocketAddr, response_type: ResponseType, resour
 fn create_topic(topic_name: &String, resource_type: &String, req: &mut coap_lite::CoapRequest<SocketAddr>) {
     let topic = Topic::new(topic_name.clone(), resource_type.clone());
     let topic_uri = topic.get_topic_uri();
+    let topic_data = topic.get_topic_data().to_owned();
+    let location = "ps/".to_string() + &topic_uri;
+    let data_location = "ps/data/".to_string() + &topic_data;
     let mut locked_topic_collection: std::sync::MutexGuard<'_, Arc<TopicCollection>> = TOPIC_COLLECTION_MUTEX.lock().unwrap();
     let mut topic_collection_ref = Arc::get_mut(&mut locked_topic_collection);
     topic_collection_ref.as_mut().unwrap().add_topic(topic);
-    println!("Topic '{}' with uri: {}, and of type '{}' added to the topic map.", topic_name, topic_uri, resource_type);
+    println!("Topic '{}' with uri: {}, data-uri: {}, and of type '{}' added to the topic map.", topic_name, topic_uri, topic_data, resource_type);
 
     if let Some(ref mut message) = req.response {
-        message.message.payload = b"Topic created succesfully".to_vec();
+        let payload = json!({"Location-Path": location,
+    "topic-name": topic_name,
+    "topic-data": data_location,
+    "resource-type": resource_type});
+        message.message.payload = payload.to_string().into_bytes().to_vec();
         message.set_status(coap_lite::ResponseType::Created);
     }
 }
@@ -565,53 +572,8 @@ fn handle_get_latest_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &st
     }
 }
 
-/// Initializes 3 topics to topic collection with names "topic1, topic2 & topic3"
-/// uris/datauris are: 123/321 - 456/654 - 789/987
-fn initialize_topics() {
-    // lock mutex
-    let mut locked_topic_collection = TOPIC_COLLECTION_MUTEX.lock().unwrap();
-    // Accessing the TopicCollection from the mutex guard
-    let topic_collection = match Arc::get_mut(&mut locked_topic_collection) {
-        Some(topic_collection) => topic_collection,
-        None => {
-            // Handle the case where Arc::get_mut() returns None
-            println!("Failed to obtain mutable reference to TopicCollection");
-            return; // Or any other appropriate error handling
-        }
-    };
-
-    let example_data = "{temperature: 20}";
-    let data_uri1 = "321".to_string();
-    let data_uri2 = "654".to_string();
-    let data_uri3 = "987".to_string();
-
-    let mut topic1 = Topic::new("topic1".to_string(), "core.ps.conf".to_string());
-    topic1.set_topic_uri("123".to_string());
-    topic1.set_topic_data(data_uri1.clone());
-    topic1.half_created = false;
-    topic1.get_data_resource().set_data(example_data.to_string());
-    topic1.get_data_resource().set_data_uri(data_uri1.to_string());
-    let mut topic2 = Topic::new("topic2".to_string(), "core.ps.conf".to_string());
-    topic2.set_topic_uri("456".to_string());
-    topic2.set_topic_data(data_uri2.clone());
-    topic2.half_created = false;
-    topic2.get_data_resource().set_data(example_data.to_string());
-    topic2.get_data_resource().set_data_uri(data_uri2.to_string());
-    let mut topic3 = Topic::new("topic3".to_string(), "core.ps.conf".to_string());
-    topic3.set_topic_uri("789".to_string());
-    topic3.set_topic_data(data_uri3.clone());
-    topic3.half_created = false;
-    topic3.get_data_resource().set_data(example_data.to_string());
-    topic3.get_data_resource().set_data_uri(data_uri3.to_string());
-
-    topic_collection.add_topic(topic1);
-    topic_collection.add_topic(topic2);
-    topic_collection.add_topic(topic3);
-}
-
 /// server startup and handling requests is implemented in main 
 fn main() {
-    initialize_topics();
     let addr = "127.0.0.1:5683";
     Runtime::new().unwrap().block_on(async move {
         // create socket2 socket and assign a random address to it, then join multicast group with it

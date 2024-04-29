@@ -115,9 +115,11 @@ fn handle_subscription(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &str, 
         match action {
             SubscriptionAction::Subscribe => {
                 // Topic exists, add subscriber
-                data.add_subscriber(subscriber_addr.clone());
-                println!("Current subscribers for {}: {:?}",topic_data_uri.to_string(), data.get_subscribers());
-                println!("{} subscribed to data-uri {}", subscriber_addr.clone().to_string(), topic_data_uri);
+                if !data.get_subscribers().contains(&subscriber_addr.clone()){
+                    data.add_subscriber(subscriber_addr.clone());
+                    println!("Current subscribers for {}: {:?}",topic_data_uri.to_string(), data.get_subscribers());
+                    println!("{} subscribed to data-uri {}", subscriber_addr.clone().to_string(), topic_data_uri);
+                }
 
                 // Prepare a success response
                 if let Some(ref mut message) = req.response {

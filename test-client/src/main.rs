@@ -273,7 +273,7 @@ async fn listen_for_messages(socket: Arc<UdpSocket>) {
                         Ok(value) => {
                             // Handle value when it's 1
                             if value == 1 {
-                                println!("Stopped listening for topic succesfully");
+                                //  println!("Stopped listening for topic succesfully");
                                 break;
                             } else {
                                 // Continue to listen, value is something else than 1.

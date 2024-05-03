@@ -12,7 +12,7 @@ pub struct CoapTestClient {
 impl CoapTestClient {
     /// Starts the CoAP client process and prepares it for interaction.
     pub async fn start() -> Result<Self, Box<dyn Error>> {
-        let mut process = Command::new("target/debug/client.exe")
+        let mut process = Command::new("target/debug/client")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
@@ -33,7 +33,7 @@ impl CoapTestClient {
 		sleep(Duration::from_millis(100)).await;
         Ok(())
     }
-
+ 
 	pub async fn read_all_output(&mut self) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
 		let mut prompt_count = 0;
@@ -41,12 +41,14 @@ impl CoapTestClient {
 			let mut line = String::new();
 			let bytes_read = self.reader.read_line(&mut line)?;
 			output.push_str(&line);
-			if line.contains('\n') {
+			if line.contains('\n'){
 			break;
 			}
 		}
 		Ok(output)
 	}
+
+
 }
 #[tokio::test]
 async fn test_full_coap_pubsub_workflow() -> Result<(), Box<dyn Error>> {
@@ -104,6 +106,12 @@ async fn test_full_coap_pubsub_workflow() -> Result<(), Box<dyn Error>> {
 	println!("Debug output: {:?}", output);
     assert!(response_contains(&output, "\"temperature\":24"));
 
+    // 3. Unsubscribe
+    client.send_command(&format!("3 {}", data_uri)).await?;
+    let output = client.read_all_output().await?;
+	println!("Debug output: {:?}", output);
+    assert!(response_contains(&output, "Unsubscribe"));
+
     // Update topic data with a new temperature value
     client.send_command(&format!("5 {} {{\"temperature\":25}}", data_uri)).await?;
     let output = client.read_all_output().await?;
@@ -126,7 +134,7 @@ async fn test_full_coap_pubsub_workflow() -> Result<(), Box<dyn Error>> {
     client.send_command("1").await?;
     let output = client.read_all_output().await?;
     println!("Debug output: {:?}", output);
-    assert!(!response_contains(&output, "[]"));
+    assert!(response_contains(&output, "[]"));
 
     Ok(())
 }

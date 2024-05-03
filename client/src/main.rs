@@ -19,7 +19,7 @@ lazy_static! {
 async fn main() {
     handle_command().await;
 }
-static GLOBAL_URL: &str = "127.0.0.1:5683";
+static GLOBAL_URL: &str = "127.0.0.1:5681";
 
 async fn handle_command() {
     let discovery_url = "coap://".to_owned()+GLOBAL_URL+"/discovery";

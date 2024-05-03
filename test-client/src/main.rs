@@ -19,27 +19,12 @@ lazy_static! {
 async fn main() {
     handle_command().await;
 }
-static GLOBAL_URL: &str = "127.0.0.1:5681";
+static GLOBAL_URL: &str = "127.0.0.1:5683";
 
 async fn handle_command() {
     let discovery_url = "coap://".to_owned()+GLOBAL_URL+"/discovery";
 
     loop {
-        println!("");
-        println!("Enter command number:");
-        println!("1. topic name/uri/datauri discovery");
-        println!("2. subscribe <Topic_data_URI>");
-        println!("3. unsubscribe <Topic_data_URI>");
-        println!("4. create topic <TopicName>");
-        println!("5. update topic data: PUT <Topic_data_URI> <Payload>");
-        println!("6. delete topic configuration: DELETE <TopicURI>");
-        println!("7. multicast broker discovery");
-        println!("8. broker discovery");
-        println!("9. read latest data <Topic_data_URI>");
-        println!("10. topic-configuration discovery");
-        println!("11. topic-data discovery");
-        println!("12. topic collection discovery");
-        println!("");
 
         io::stdout().flush().unwrap();
 
@@ -91,7 +76,6 @@ async fn handle_command() {
 
 /// Performs simple GET request with resource type = core.ps.coll and prints out the response
 async fn topic_collection_discovery() {
-    println!("Topic collection discovery start");
     let addr = GLOBAL_URL;
     let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
@@ -111,7 +95,6 @@ async fn topic_collection_discovery() {
 
 /// Performs simple GET request with resource type = core.ps.data and prints out the response.
 async fn topic_data_discovery() {
-    println!("Topic data discovery start");
     let addr = GLOBAL_URL;
     let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();
@@ -209,7 +192,6 @@ fn server_error(e: &IoError) {
 /// Function that handles deleting a topic configuration. Sends a DELETE request to the server.
 async fn delete_topic(topic_uri: &str) -> Result<(), Box<dyn Error>> {
     let url = format!("{}/{}", "coap://".to_owned()+GLOBAL_URL,topic_uri);
-    println!("Client request: {}", url);
 
     match UdpCoAPClient::delete(&url).await {
         Ok(response) => {
@@ -226,7 +208,6 @@ async fn delete_topic(topic_uri: &str) -> Result<(), Box<dyn Error>> {
 async fn update_topic(topic_data_uri: &str, payload: &str) -> Result<(), Box<dyn Error>> {
     let url = format!("{}/ps/data/{}","coap://".to_owned()+GLOBAL_URL, topic_data_uri);
     let data = payload.as_bytes().to_vec();
-    println!("Client request: {}", url);
 
     match UdpCoAPClient::put(&url, data).await {
         Ok(response) => {
@@ -285,14 +266,14 @@ async fn listen_for_messages(socket: Arc<UdpSocket>) {
                 let request = CoapRequest::from_packet(packet, src);
                 let clone = request.clone();
                 let msg = String::from_utf8(clone.message.payload).unwrap();
-                println!("Received message from {}: {}", src, msg);
+                println!("Received message: {}", msg);
 
                 if let Some(result) = request.message.get_observe_value() {
                     match result {
                         Ok(value) => {
                             // Handle value when it's 1
                             if value == 1 {
-                                println!("Stopped listening for topic succesfully");
+                                //  println!("Stopped listening for topic succesfully");
                                 break;
                             } else {
                                 // Continue to listen, value is something else than 1.
@@ -323,7 +304,6 @@ async fn listen_for_messages(socket: Arc<UdpSocket>) {
 /// Function that handles the discovery of topics.
 async fn discovery(url: &str) {
 
-    println!("Client request: {}", url);
 
     match UdpCoAPClient::get(url).await {
         Ok(response) => {
@@ -366,7 +346,6 @@ async fn create_topic(topic_name: &str) {
 async fn read_latest_topic_data(topic_data: &str) -> Result<(), Box<dyn Error>> {
     let topic_data_uri = format!("/ps/data/{}", topic_data);
     let url = format!("coap://{}{}", GLOBAL_URL, topic_data_uri);
-    println!("Client request: {}", url);
 
     // Make a GET request to retrieve the latest topic data
     match UdpCoAPClient::get(&url).await {
@@ -382,7 +361,6 @@ async fn read_latest_topic_data(topic_data: &str) -> Result<(), Box<dyn Error>> 
 }
 /// Topic configuration discovery.
 async fn topic_configuration_discovery() {
-    println!("Topic configuration discovery start");
     let addr = GLOBAL_URL;
     let mut client: UdpCoAPClient = UdpCoAPClient::new_udp(addr).await.unwrap();
     let mut request: CoapRequest<SocketAddr> = CoapRequest::new();

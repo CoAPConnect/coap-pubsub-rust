@@ -12,6 +12,7 @@ use resource::TopicCollection;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
+use core::time;
 
 // Topic Collection resource to store all topic-related data
 // Lock the mutex to access the topic_collection
@@ -574,40 +575,67 @@ fn handle_get_latest_data(req: &mut CoapRequest<SocketAddr>, topic_data_uri: &st
 
 /// server startup and handling requests is implemented in main 
 fn main() {
-    let addr = "127.0.0.1:5683";
+    let local_addr = "127.0.0.1:5683";
+   // let multicast_addr = "224.0.1.187:5683";
+    let bind_addr = "0.0.0.0:5683";
+    
     Runtime::new().unwrap().block_on(async move {
-        // create socket2 socket and assign a random address to it, then join multicast group with it
-        // and attempt to make these nonblocking and reusable
-        let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(socket2::Protocol::UDP)).unwrap();
-        socket.set_nonblocking(true).unwrap();
-        socket.set_reuse_address(true).unwrap();
-        let addr2 = "0.0.0.0:5683".parse::<std::net::SocketAddr>().unwrap();
-        socket.bind(&addr2.into()).unwrap();
-        // multicast address for ipv4 coap is 224.0.1.187:5683
+        
+        
+        let max_retries = 5;
+        let mut retries = 0;
+
+        let tokio_local_socket = loop {
+            let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(socket2::Protocol::UDP)).expect("Failed to create socket");
+            socket.set_nonblocking(true).expect("Failed to set non-blocking");
+            socket.set_reuse_address(true).expect("Reuse address error");
+            socket.set_reuse_port(true).expect("Reuse port error");
+
+            let addr = local_addr.parse::<SocketAddr>().unwrap();
+            match socket.bind(&addr.into()) {
+                Ok(()) => break tokio::net::UdpSocket::from_std(socket.into()).unwrap(),
+                Err(e) => {
+                    if retries < max_retries {
+                        retries += 1;
+                        println!("Retry {}/{}: Failed to bind to {}: {:?}", retries, max_retries, local_addr, e);
+                        std::thread::sleep(time::Duration::from_secs(2));
+                    } else {
+                        panic!("Max retries reached. Failed to bind to {}: {:?}", local_addr, e);
+                    }
+                }
+            }
+        };
+
+        // Create and configure the multicast socket
+        let multicast_socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(socket2::Protocol::UDP)).unwrap();
+        multicast_socket.set_nonblocking(true).expect("nonblock failure");
+        multicast_socket.set_reuse_address(true).expect("Reuse address error");
+        multicast_socket.set_reuse_port(true).expect("Reuse port error");
+        let bind_addr = bind_addr.parse::<SocketAddr>().unwrap();
+        multicast_socket.bind(&bind_addr.into()).unwrap();
+
+        // Join multicast group
         let multiaddr = Ipv4Addr::new(224, 0, 1, 187);
-        socket.join_multicast_v4(&multiaddr, &Ipv4Addr::UNSPECIFIED).unwrap();
+        multicast_socket.join_multicast_v4(&multiaddr, &Ipv4Addr::UNSPECIFIED).unwrap();
 
-        // create std socket from socket2 socket and then tokio socket from std socket
-        let sock = UdpSocket::from(socket);
-        let socket_multi = tokio::net::UdpSocket::from_std(sock).unwrap();
+        // Create tokio UdpSocket from std UdpSocket for multicast
+        let std_multicast_socket = std::net::UdpSocket::from(multicast_socket);
+        let tokio_multicast_socket = tokio::net::UdpSocket::from_std(std_multicast_socket).unwrap();
 
-        // and socket from 127.0.0.1:5683
-        let socket_local = tokio::net::UdpSocket::bind(addr).await.unwrap();
-
-        // create server from listeners
+        // Create server from listeners
         let mut listeners: Vec<Box<dyn Listener>> = Vec::new();
-        let listener1 = Box::new(UdpCoapListener::from_socket(socket_local));
-        let listener2 =  Box::new(UdpCoapListener::from_socket(socket_multi));
-        listeners.push(listener1);
-        listeners.push(listener2);
+        let multicast_listener = Box::new(UdpCoapListener::from_socket(tokio_multicast_socket));
+        let local_listener = Box::new(UdpCoapListener::from_socket(tokio_local_socket));
+        listeners.push(multicast_listener);
+        listeners.push(local_listener);
         let mut server = Server::from_listeners(listeners);
 
-        // remove basic functionality of handling get requests with observe setting
+        // Disable observe handling
         server.disable_observe_handling(true).await;
-        
-        println!("Broker up on {}, listening for requests.", addr);
 
-        // run the server and process requests
+        println!("Broker up on {}, listening for requests on multicast and unicast.", local_addr);
+
+        // Run the server and process requests
         server.run(|mut request: Box<CoapRequest<SocketAddr>>| async {
             match request.get_method() {
                 &Method::Get => handle_get(&mut *request),
@@ -616,8 +644,8 @@ fn main() {
                 &Method::Delete => handle_delete(&mut *request).await,
                 _ => println!("Error, request by method that is not supported."),
             };
-            // respond to request
-            return request;
+            // Respond to request
+            request
         }).await.unwrap();
     });
 }
